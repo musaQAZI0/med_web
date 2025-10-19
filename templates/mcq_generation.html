@@ -1,0 +1,68 @@
+{% extends "base.html" %}
+{% block content %}
+<a href="{{ url_for('index') }}" class="btn btn-outline-secondary mb-3">
+    <i class="bi bi-arrow-left-circle"></i> Powrót do głównej <!-- Using Bootstrap Icons -->
+    <!-- Or without icon: &larr; Powrót do głównej -->
+</a>
+<h2>Generowanie pytań wielokrotnego wyboru z PDF</h2>
+<div class="section">
+    <h3>Prześlij PDF</h3>
+    <form id="uploadForm" enctype="multipart/form-data">
+        <div class="mb-3">
+            <label for="pdfFile" class="form-label">Wybierz plik PDF</label>
+            <input class="form-control" type="file" id="pdfFile" name="pdf" accept=".pdf" required>
+        </div>
+        <button type="submit" class="btn btn-success">Rozpocznij generowanie pytań</button>
+    </form>
+    <div id="uploadStatus" class="task-progress mt-3"></div>
+</div>
+<script>
+    document.getElementById('uploadForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const formData = new FormData();
+        const fileInput = document.getElementById('pdfFile');
+        if (!fileInput.files[0]) return;
+        
+        formData.append('pdf', fileInput.files[0]);
+        fetch('/start-generate-mcqs', {
+            method: 'POST',
+            body: formData
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.task_id) {
+                pollMcqTaskStatus(data.task_id, 'uploadStatus');
+            } else {
+                document.getElementById('uploadStatus').innerHTML = `<div class="alert alert-danger">Przesyłanie nie powiodło się: ${data.error}</div>`;
+            }
+        });
+    });
+    function pollMcqTaskStatus(taskId, elementId) {
+        const element = document.getElementById(elementId);
+        element.innerHTML = `<div class="alert alert-info">Zadanie generowania pytań ${taskId} rozpoczęte. Sprawdzanie statusu...</div>`;
+        
+        const poll = setInterval(() => {
+            fetch(`/mcq-status/${taskId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'completed') {
+                        clearInterval(poll);
+                        element.innerHTML = `
+                            <div class="alert alert-success">Generowanie pytań ukończone!</div>
+                            <a href="${data.download_url}" class="btn btn-primary" target="_blank">Pobierz plik Excel</a>
+                        `;
+                    } else if (data.status === 'error' || data.status === 'cancelled') {
+                        clearInterval(poll);
+                        element.innerHTML = `<div class="alert alert-danger">Zadanie ${data.status}. ${data.error ? 'Błąd: ' + data.error : ''}</div>`;
+                    } else {
+                        element.innerHTML = `<div class="alert alert-info">Status: ${data.status} - ${data.progress}</div>`;
+                    }
+                })
+                .catch(() => {
+                    clearInterval(poll);
+                    element.innerHTML = '<div class="alert alert-danger">Błąd podczas sprawdzania statusu zadania.</div>';
+                });
+        }, 2000);
+    }
+</script>
+{% endblock %}

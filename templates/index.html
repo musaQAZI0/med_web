@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="section">
+    <h2>Zarządzanie pytaniami</h2>
+    <a href="{{ url_for('questions') }}" class="btn btn-primary">Zarządzaj pytaniami</a>
+</div>
+
+<div class="section">
+    <h2>Generacja MCQ</h2>
+    <a href="{{ url_for('mcq_generation') }}" class="btn btn-success">Generuj pytania wielokrotnego wyboru z pliku PDF</a>
+</div>
+
+<div class="section">
+    <h2>Stan systemu</h2>
+    <button id="healthCheckBtn" class="btn btn-info">Sprawdź zdrowie</button>
+    <div id="healthStatus" class="mt-2"></div>
+</div>
+
+<script>
+    document.getElementById('healthCheckBtn').addEventListener('click', function() {
+        // Clear previous results
+        document.getElementById('healthStatus').innerHTML = '<div class="alert alert-info">Checking health...</div>';
+        
+        fetch('/health')
+            .then(response => response.json())
+            .then(data => {
+                const statusDiv = document.getElementById('healthStatus');
+                let html = '';
+
+                if (data.status === 'healthy') {
+                    html += `<div class="alert alert-success"><strong>System Status:</strong> Healthy</div>`;
+                    html += `<div class="card mt-2"><div class="card-body">`;
+                    html += `<h5 class="card-title">Database Connection</h5>`;
+                    html += `<p class="card-text"><strong>Host:</strong> ${data.host}:${data.port}</p>`;
+                    html += `<p class="card-text"><strong>Database:</strong> ${data.database_name}</p>`;
+                    html += `</div></div>`;
+                    statusDiv.innerHTML = html;
+                } else {
+                    html += `<div class="alert alert-danger"><strong>System Status:</strong> Unhealthy</div>`;
+                    html += `<div class="card mt-2"><div class="card-body">`;
+                    html += `<h5 class="card-title">Issues Found</h5>`;
+                    html += `<p class="card-text"><strong>Problem:</strong> ${data.database || 'General'}</p>`;
+                    html += `</div></div>`;
+                    statusDiv.innerHTML = html;
+                }
+            })
+            .catch(error => {
+                document.getElementById('healthStatus').innerHTML = `<div class="alert alert-danger">Error checking health: ${error.message || error}</div>`;
+            });
+    });
+</script>
+{% endblock %}

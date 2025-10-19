@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Task Manager - MedFellow</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+
+        .btn-danger {
+            background: #f56565;
+            color: white;
+        }
+
+        .btn-danger:hover {
+            background: #e53e3e;
+        }
+
+        .btn-success {
+            background: #48bb78;
+            color: white;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .stat-card h3 {
+            color: #666;
+            font-size: 14px;
+            margin-bottom: 10px;
+        }
+
+        .stat-card .number {
+            font-size: 36px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .stat-card.processing .number { color: #f6ad55; }
+        .stat-card.completed .number { color: #48bb78; }
+        .stat-card.failed .number { color: #f56565; }
+
+        .controls {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .controls input {
+            padding: 10px;
+            border: 2px solid #e2e8f0;
+            border-radius: 5px;
+            font-size: 14px;
+            flex: 1;
+            min-width: 250px;
+        }
+
+        .controls select {
+            padding: 10px;
+            border: 2px solid #e2e8f0;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        .tasks-container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .task-card {
+            border: 2px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: all 0.3s;
+        }
+
+        .task-card:hover {
+            border-color: #667eea;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.2);
+        }
+
+        .task-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: start;
+            margin-bottom: 15px;
+        }
+
+        .task-id {
+            font-family: monospace;
+            font-size: 14px;
+            color: #666;
+            background: #f7fafc;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .task-id:hover {
+            background: #edf2f7;
+        }
+
+        .task-status {
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-processing {
+            background: #fed7aa;
+            color: #c05621;
+        }
+
+        .status-queued {
+            background: #bee3f8;
+            color: #2c5282;
+        }
+
+        .status-completed {
+            background: #c6f6d5;
+            color: #22543d;
+        }
+
+        .status-failed, .status-cancelled {
+            background: #fed7d7;
+            color: #742a2a;
+        }
+
+        .task-progress {
+            margin-bottom: 15px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #edf2f7;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.5s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 12px;
+        }
+
+        .task-details {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        .task-detail-item {
+            font-size: 14px;
+            color: #666;
+        }
+
+        .task-detail-item strong {
+            color: #333;
+        }
+
+        .task-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 12px;
+        }
+
+        .error-message {
+            background: #fed7d7;
+            color: #742a2a;
+            padding: 10px;
+            border-radius: 5px;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #666;
+        }
+
+        .empty-state h2 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+
+        .spinner {
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .back-link {
+            color: #667eea;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        .back-link:hover {
+            text-decoration: underline;
+        }
+
+        /* Mobile Responsive Styles */
+        @media (max-width: 768px) {
+            body {
+                padding: 10px;
+            }
+
+            .header {
+                padding: 15px;
+                flex-direction: column;
+                gap: 15px;
+                align-items: flex-start;
+            }
+
+            .header h1 {
+                font-size: 22px;
+            }
+
+            .header-actions {
+                width: 100%;
+                flex-direction: column;
+            }
+
+            .header-actions .btn {
+                width: 100%;
+            }
+
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 10px;
+            }
+
+            .stat-card {
+                padding: 15px;
+            }
+
+            .stat-card h3 {
+                font-size: 12px;
+            }
+
+            .stat-card .number {
+                font-size: 28px;
+            }
+
+            .controls {
+                padding: 15px;
+                flex-direction: column;
+                gap: 10px;
+            }
+
+            .controls input,
+            .controls select {
+                min-width: 100%;
+                width: 100%;
+            }
+
+            .controls .btn {
+                width: 100%;
+            }
+
+            .tasks-container {
+                padding: 15px;
+            }
+
+            .task-card {
+                padding: 15px;
+            }
+
+            .task-header {
+                flex-direction: column;
+                gap: 10px;
+                align-items: flex-start;
+            }
+
+            .task-id {
+                font-size: 12px;
+                word-break: break-all;
+            }
+
+            .task-details {
+                grid-template-columns: 1fr;
+                gap: 8px;
+            }
+
+            .task-detail-item {
+                font-size: 13px;
+            }
+
+            .task-actions {
+                flex-direction: column;
+                width: 100%;
+            }
+
+            .task-actions .btn {
+                width: 100%;
+            }
+
+            .progress-bar {
+                height: 25px;
+            }
+
+            .progress-fill {
+                font-size: 11px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .header h1 {
+                font-size: 18px;
+            }
+
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .stat-card .number {
+                font-size: 24px;
+            }
+
+            .task-id {
+                font-size: 11px;
+                padding: 4px 8px;
+            }
+
+            .task-status {
+                font-size: 10px;
+                padding: 4px 10px;
+            }
+
+            .btn {
+                padding: 8px 16px;
+                font-size: 13px;
+            }
+
+            .btn-small {
+                padding: 5px 10px;
+                font-size: 11px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div>
+                <h1>Background Task Manager</h1>
+                <a href="/" class="back-link">← Back to Home</a>
+            </div>
+            <div class="header-actions">
+                <button class="btn btn-primary" onclick="refreshTasks()">Refresh</button>
+                <button class="btn btn-danger" onclick="cancelAllTasks()">Cancel All</button>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card processing">
+                <h3>Running Tasks</h3>
+                <div class="number" id="stat-running">0</div>
+            </div>
+            <div class="stat-card completed">
+                <h3>Completed Tasks</h3>
+                <div class="number" id="stat-completed">0</div>
+            </div>
+            <div class="stat-card failed">
+                <h3>Failed Tasks</h3>
+                <div class="number" id="stat-failed">0</div>
+            </div>
+            <div class="stat-card">
+                <h3>Total Tasks</h3>
+                <div class="number" id="stat-total">0</div>
+            </div>
+        </div>
+
+        <div class="controls">
+            <input type="text" id="search-task-id" placeholder="Search by Task ID...">
+            <select id="filter-status">
+                <option value="">All Statuses</option>
+                <option value="processing">Processing</option>
+                <option value="queued">Queued</option>
+                <option value="completed">Completed</option>
+                <option value="failed">Failed</option>
+                <option value="cancelled">Cancelled</option>
+            </select>
+            <button class="btn btn-primary" onclick="applyFilters()">Apply Filters</button>
+        </div>
+
+        <div class="tasks-container">
+            <div id="loading-state">
+                <div class="spinner"></div>
+                <p style="text-align: center; color: #666;">Loading tasks...</p>
+            </div>
+            <div id="tasks-list" style="display: none;"></div>
+            <div id="empty-state" style="display: none;">
+                <div class="empty-state">
+                    <h2>No Tasks Found</h2>
+                    <p>There are no background tasks running or completed yet.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let allTasks = [];
+        let pollInterval = null;
+
+        // Load tasks on page load
+        document.addEventListener('DOMContentLoaded', () => {
+            loadTasks();
+            // Auto-refresh every 3 seconds
+            pollInterval = setInterval(loadTasks, 3000);
+        });
+
+        async function loadTasks() {
+            try {
+                const response = await fetch('/all-tasks');
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    allTasks = data.tasks;
+                    updateStats();
+                    displayTasks(allTasks);
+                }
+            } catch (error) {
+                console.error('Error loading tasks:', error);
+            }
+        }
+
+        function updateStats() {
+            const stats = {
+                running: 0,
+                completed: 0,
+                failed: 0,
+                total: allTasks.length
+            };
+
+            allTasks.forEach(task => {
+                if (task.status === 'processing' || task.status === 'queued') {
+                    stats.running++;
+                } else if (task.status === 'completed') {
+                    stats.completed++;
+                } else if (task.status === 'failed' || task.status === 'cancelled') {
+                    stats.failed++;
+                }
+            });
+
+            document.getElementById('stat-running').textContent = stats.running;
+            document.getElementById('stat-completed').textContent = stats.completed;
+            document.getElementById('stat-failed').textContent = stats.failed;
+            document.getElementById('stat-total').textContent = stats.total;
+        }
+
+        function displayTasks(tasks) {
+            const loadingState = document.getElementById('loading-state');
+            const tasksList = document.getElementById('tasks-list');
+            const emptyState = document.getElementById('empty-state');
+
+            loadingState.style.display = 'none';
+
+            if (tasks.length === 0) {
+                tasksList.style.display = 'none';
+                emptyState.style.display = 'block';
+                return;
+            }
+
+            emptyState.style.display = 'none';
+            tasksList.style.display = 'block';
+
+            tasksList.innerHTML = tasks.map(task => createTaskCard(task)).join('');
+        }
+
+        function createTaskCard(task) {
+            const progressPercent = task.total > 0 ? Math.round((task.progress / task.total) * 100) : 0;
+            const statusClass = `status-${task.status}`;
+
+            return `
+                <div class="task-card">
+                    <div class="task-header">
+                        <div class="task-id" onclick="copyToClipboard('${task.task_id}')" title="Click to copy">
+                            ${task.task_id}
+                        </div>
+                        <div class="task-status ${statusClass}">${task.status}</div>
+                    </div>
+
+                    ${task.status === 'processing' || task.status === 'queued' ? `
+                        <div class="task-progress">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: ${progressPercent}%">
+                                    ${task.progress} / ${task.total} (${progressPercent}%)
+                                </div>
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <div class="task-details">
+                        <div class="task-detail-item">
+                            <strong>Status:</strong> ${task.status}
+                        </div>
+                        <div class="task-detail-item">
+                            <strong>Progress:</strong> ${task.progress} / ${task.total}
+                        </div>
+                        <div class="task-detail-item">
+                            <strong>Results:</strong> ${task.results_count} items
+                        </div>
+                        <div class="task-detail-item">
+                            <strong>Thread:</strong> ${task.thread_alive ? '✓ Running' : '✗ Stopped'}
+                        </div>
+                    </div>
+
+                    ${task.error ? `
+                        <div class="error-message">
+                            <strong>Error:</strong> ${task.error}
+                        </div>
+                    ` : ''}
+
+                    <div class="task-actions">
+                        <button class="btn btn-primary btn-small" onclick="viewTaskDetails('${task.task_id}')">
+                            View Details
+                        </button>
+                        ${task.is_running ? `
+                            <button class="btn btn-danger btn-small" onclick="cancelTask('${task.task_id}')">
+                                Cancel Task
+                            </button>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+        }
+
+        async function viewTaskDetails(taskId) {
+            try {
+                const response = await fetch(`/task-status/${taskId}`);
+                const data = await response.json();
+
+                if (data.status === 'not_found') {
+                    alert('Task not found!');
+                    return;
+                }
+
+                // Create a modal or new window to show full details
+                const detailsWindow = window.open('', '_blank', 'width=800,height=600');
+                detailsWindow.document.write(`
+                    <html>
+                    <head>
+                        <title>Task Details: ${taskId}</title>
+                        <style>
+                            body { font-family: monospace; padding: 20px; }
+                            pre { background: #f5f5f5; padding: 15px; border-radius: 5px; }
+                        </style>
+                    </head>
+                    <body>
+                        <h1>Task Details</h1>
+                        <pre>${JSON.stringify(data, null, 2)}</pre>
+                    </body>
+                    </html>
+                `);
+            } catch (error) {
+                alert('Error loading task details: ' + error.message);
+            }
+        }
+
+        async function cancelTask(taskId) {
+            if (!confirm(`Are you sure you want to cancel task ${taskId}?`)) {
+                return;
+            }
+
+            try {
+                const response = await fetch(`/cancel-task/${taskId}`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    alert('Task cancellation requested!');
+                    loadTasks();
+                } else {
+                    alert('Failed to cancel task');
+                }
+            } catch (error) {
+                alert('Error cancelling task: ' + error.message);
+            }
+        }
+
+        async function cancelAllTasks() {
+            if (!confirm('Are you sure you want to cancel ALL running tasks?')) {
+                return;
+            }
+
+            try {
+                const response = await fetch('/cancel-all-tasks', {
+                    method: 'POST'
+                });
+
+                const data = await response.json();
+                if (data.status === 'success') {
+                    alert(data.message);
+                    loadTasks();
+                } else {
+                    alert('Failed to cancel tasks: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error cancelling tasks: ' + error.message);
+            }
+        }
+
+        function refreshTasks() {
+            loadTasks();
+        }
+
+        function applyFilters() {
+            const searchId = document.getElementById('search-task-id').value.toLowerCase();
+            const statusFilter = document.getElementById('filter-status').value;
+
+            let filtered = allTasks;
+
+            if (searchId) {
+                filtered = filtered.filter(task => task.task_id.toLowerCase().includes(searchId));
+            }
+
+            if (statusFilter) {
+                filtered = filtered.filter(task => task.status === statusFilter);
+            }
+
+            displayTasks(filtered);
+        }
+
+        function copyToClipboard(text) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('Task ID copied to clipboard!');
+            });
+        }
+
+        // Clean up interval when page closes
+        window.addEventListener('beforeunload', () => {
+            if (pollInterval) {
+                clearInterval(pollInterval);
+            }
+        });
+    </script>
+</body>
+</html>

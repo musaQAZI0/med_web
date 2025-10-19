@@ -1,0 +1,1428 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<a href="{{ url_for('index') }}" class="btn btn-outline-secondary mb-3">
+    <i class="bi bi-arrow-left-circle"></i> Powrót do głównej
+</a>
+
+<h2>Zarządzanie pytaniami</h2>
+
+<!-- View All Questions -->
+<div class="section">
+    <h3>Wyświetl pytania według tematu</h3>
+    <form id="viewQuestionsForm">
+        <div class="mb-3">
+            <label for="categoryIdView" class="form-label">Kategoria</label>
+            <select class="form-control" id="categoryIdView" required>
+                <option value="">Wybierz kategorię</option>
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="subjectIdView" class="form-label">Przedmiot</label>
+            <select class="form-control" id="subjectIdView" required disabled>
+                <option value="">Wybierz przedmiot</option>
+            </select>
+        </div>
+        <div class="mb-3">
+            <label for="topicIdView" class="form-label">Temat</label>
+            <select class="form-control" id="topicIdView" required disabled>
+                <option value="">Wybierz temat</option>
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary">Pobierz pytania</button>
+    </form>
+    <div id="questionsList" class="mt-3"></div>
+</div>
+
+<!-- Cancel All Tasks -->
+<div class="section">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>Emergency Controls</h3>
+        <span id="runningTasksCount" class="badge bg-info">Loading...</span>
+    </div>
+    <div class="alert alert-warning">
+        <strong>Warning:</strong> This will cancel ALL running tasks immediately.
+    </div>
+    <button id="cancelAllTasksBtn" class="btn btn-danger">
+        <i class="bi bi-stop-circle"></i> Cancel All Running Tasks
+    </button>
+    <div id="cancelAllStatus" class="mt-2"></div>
+</div>
+
+<!-- Generate Explanations -->
+<div class="section">
+    <h3>Generuj wyjaśnienia pytań</h3>
+    <ul class="nav nav-tabs" id="explanationTab" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="by-topic-tab" data-bs-toggle="tab" data-bs-target="#by-topic" type="button" role="tab">Według tematu</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="all-topics-tab" data-bs-toggle="tab" data-bs-target="#all-topics" type="button" role="tab">Wszystkie tematy w przedmiocie</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="global-tab" data-bs-toggle="tab" data-bs-target="#global" type="button" role="tab">Globalnie (wszystkie niewyjaśnione)</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="by-question-id-tab" data-bs-toggle="tab" data-bs-target="#by-question-id" type="button" role="tab">Według ID pytania</button>
+        </li>
+    </ul>
+    <div class="tab-content" id="explanationTabContent">
+        <!-- By Topic -->
+        <div class="tab-pane fade show active" id="by-topic" role="tabpanel">
+            <form id="generateByTopicForm" class="mt-3">
+                <div class="mb-3">
+                    <label for="categoryIdGen" class="form-label">Kategoria</label>
+                    <select class="form-control" id="categoryIdGen" required>
+                        <option value="">Wybierz kategorię</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="subjectNameGen" class="form-label">Przedmiot</label>
+                    <select class="form-control" id="subjectNameGen" required disabled>
+                        <option value="">Wybierz przedmiot</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="topicNameGen" class="form-label">Temat</label>
+                    <select class="form-control" id="topicNameGen" required disabled>
+                        <option value="">Wybierz temat</option>
+                    </select>
+                </div>
+                <div class="mb-3 form-check">
+                    <input class="form-check-input" type="checkbox" value="" id="overwriteExistingTopic">
+                    <label class="form-check-label" for="overwriteExistingTopic">
+                        Nadpisz istniejące wyjaśnienia
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-warning">Generuj wyjaśnienia (według tematu)</button>
+            </form>
+        </div>
+        <!-- All Topics in Subject -->
+        <div class="tab-pane fade" id="all-topics" role="tabpanel">
+            <form id="generateAllTopicsForm" class="mt-3">
+                <div class="mb-3">
+                    <label for="categoryIdAll" class="form-label">Kategoria</label>
+                    <select class="form-control" id="categoryIdAll" required>
+                        <option value="">Wybierz kategorię</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="subjectNameAll" class="form-label">Przedmiot</label>
+                    <select class="form-control" id="subjectNameAll" required disabled>
+                        <option value="">Wybierz przedmiot</option>
+                    </select>
+                </div>
+                <div class="mb-3 form-check">
+                    <input class="form-check-input" type="checkbox" value="" id="overwriteExistingAll">
+                    <label class="form-check-label" for="overwriteExistingAll">
+                        Nadpisz istniejące wyjaśnienia
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-warning">Generuj wyjaśnienia (wszystkie tematy)</button>
+            </form>
+        </div>
+        <!-- Global -->
+        <div class="tab-pane fade" id="global" role="tabpanel">
+            <form id="generateGlobalForm" class="mt-3">
+                <div class="mb-3 form-check">
+                    <input class="form-check-input" type="checkbox" value="" id="overwriteExistingGlobal">
+                    <label class="form-check-label" for="overwriteExistingGlobal">
+                        Nadpisz istniejące wyjaśnienia
+                    </label>
+                </div>
+                <button type="submit" class="btn btn-danger">Generuj wyjaśnienia (globalnie)</button>
+            </form>
+        </div>
+        <!-- By Question ID -->
+        <div class="tab-pane fade" id="by-question-id" role="tabpanel">
+            <form id="generateByQuestionIdForm" class="mt-3">
+                <div class="mb-3">
+                    <label for="questionIdGenerate" class="form-label">ID pytania</label>
+                    <input type="number" class="form-control" id="questionIdGenerate" required>
+                </div>
+                <button type="submit" class="btn btn-primary">Generuj wyjaśnienie (według ID pytania)</button>
+            </form>
+        </div>
+    </div>
+    <div id="explanationTaskStatus" class="task-progress"></div>
+</div>
+
+<!-- View Explanations -->
+<div class="section">
+    <h3>Wyświetl wyjaśnienia pytań</h3>
+    <ul class="nav nav-tabs" id="viewExplanationTab" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="view-by-id-tab" data-bs-toggle="tab" data-bs-target="#view-by-id" type="button" role="tab">Według ID pytania</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="view-by-topic-tab" data-bs-toggle="tab" data-bs-target="#view-by-topic" type="button" role="tab">Według tematu</button>
+        </li>
+    </ul>
+    <div class="tab-content" id="viewExplanationTabContent">
+        <!-- By ID -->
+        <div class="tab-pane fade show active" id="view-by-id" role="tabpanel">
+            <form id="viewExplanationByIdForm" class="mt-3">
+                <div class="mb-3">
+                    <label for="questionIdViewExp" class="form-label">ID pytania</label>
+                    <input type="number" class="form-control" id="questionIdViewExp" required>
+                </div>
+                <button type="submit" class="btn btn-info">Wyświetl wyjaśnienie</button>
+            </form>
+        </div>
+        <!-- By Topic -->
+        <div class="tab-pane fade" id="view-by-topic" role="tabpanel">
+            <form id="viewExplanationByTopicForm" class="mt-3">
+                <div class="mb-3">
+                    <label for="categoryIdViewExp" class="form-label">Kategoria</label>
+                    <select class="form-control" id="categoryIdViewExp" required>
+                        <option value="">Wybierz kategorię</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="subjectNameViewExp" class="form-label">Przedmiot</label>
+                    <select class="form-control" id="subjectNameViewExp" required disabled>
+                        <option value="">Wybierz przedmiot</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="topicNameViewExp" class="form-label">Temat</label>
+                    <select class="form-control" id="topicNameViewExp" required disabled>
+                        <option value="">Wybierz temat</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-info">Wyświetl wyjaśnienia</button>
+            </form>
+        </div>
+    </div>
+    <div id="explanationViewResults" class="mt-3"></div>
+</div>
+
+<!-- Delete Explanations -->
+<div class="section">
+    <h3>Usuń wyjaśnienia pytań</h3>
+    <ul class="nav nav-tabs" id="deleteTab" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="delete-by-id-tab" data-bs-toggle="tab" data-bs-target="#delete-by-id" type="button" role="tab">Według ID pytania</button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="delete-by-topic-tab" data-bs-toggle="tab" data-bs-target="#delete-by-topic" type="button" role="tab">Według tematu</button>
+        </li>
+    </ul>
+    <div class="tab-content" id="deleteTabContent">
+        <!-- By ID -->
+        <div class="tab-pane fade show active" id="delete-by-id" role="tabpanel">
+            <form id="deleteByIdForm" class="mt-3">
+                <div class="mb-3">
+                    <label for="questionIdDelete" class="form-label">ID pytania</label>
+                    <input type="number" class="form-control" id="questionIdDelete" required>
+                </div>
+                <button type="submit" class="btn btn-danger">Usuń wyjaśnienie (według ID)</button>
+            </form>
+        </div>
+        <!-- By Topic -->
+        <div class="tab-pane fade" id="delete-by-topic" role="tabpanel">
+            <form id="deleteByTopicForm" class="mt-3">
+                <div class="mb-3">
+                    <label for="categoryIdDel" class="form-label">Kategoria</label>
+                    <select class="form-control" id="categoryIdDel" required>
+                        <option value="">Wybierz kategorię</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="subjectNameDel" class="form-label">Przedmiot</label>
+                    <select class="form-control" id="subjectNameDel" required disabled>
+                        <option value="">Wybierz przedmiot</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="topicNameDel" class="form-label">Temat</label>
+                    <select class="form-control" id="topicNameDel" required disabled>
+                        <option value="">Wybierz temat</option>
+                    </select>
+                </div>
+                <button type="submit" class="btn btn-danger">Usuń wyjaśnienia (według tematu)</button>
+            </form>
+        </div>
+    </div>
+    <div id="deleteStatus" class="mt-2"></div>
+</div>
+
+<!-- Task Status Polling -->
+<div class="section">
+    <h3>Sprawdź status zadania</h3>
+    <form id="taskStatusForm">
+        <div class="mb-3">
+            <label for="taskId" class="form-label">ID zadania</label>
+            <input type="text" class="form-control" id="taskId" required>
+        </div>
+        <button type="submit" class="btn btn-secondary">Sprawdź status</button>
+    </form>
+    <div id="taskStatusResult" class="mt-2"></div>
+</div>
+
+<!-- Cancel Task -->
+<div class="section">
+    <h3>Anuluj zadanie</h3>
+    <form id="cancelTaskForm">
+        <div class="mb-3">
+            <label for="cancelTaskId" class="form-label">ID zadania</label>
+            <input type="text" class="form-control" id="cancelTaskId" required>
+        </div>
+        <button type="submit" class="btn btn-dark">Anuluj zadanie</button>
+    </form>
+    <div id="cancelStatus" class="mt-2"></div>
+</div>
+
+<style>
+.explanation-content {
+    white-space: pre-wrap;
+    font-family: inherit;
+    line-height: 1.6;
+}
+
+.explanation-content h1, .explanation-content h2, .explanation-content h3, 
+.explanation-content h4, .explanation-content h5, .explanation-content h6 {
+    margin-top: 1rem;
+    margin-bottom: 0.5rem;
+}
+
+.explanation-content p {
+    margin-bottom: 0.75rem;
+}
+
+.explanation-content ul, .explanation-content ol {
+    margin-bottom: 0.75rem;
+    padding-left: 1.25rem;
+}
+</style>
+
+<script>
+    const DropdownConfig = {
+        view: {
+            category: 'categoryIdView',
+            subject: 'subjectIdView',
+            topic: 'topicIdView'
+        },
+        generate: {
+            category: 'categoryIdGen',
+            subject: 'subjectNameGen',
+            topic: 'topicNameGen'
+        },
+        generateAll: {
+            category: 'categoryIdAll',
+            subject: 'subjectNameAll'
+        },
+        delete: {
+            category: 'categoryIdDel',
+            subject: 'subjectNameDel',
+            topic: 'topicNameDel'
+        },
+        viewExplanation: {
+            category: 'categoryIdViewExp',
+            subject: 'subjectNameViewExp',
+            topic: 'topicNameViewExp'
+        }
+    };
+
+    const ApiUtils = {
+        async fetchCategories() {
+            const response = await fetch('/fetch-categories');
+            return response.json();
+        },
+
+        async fetchSubjects(categoryId) {
+            const response = await fetch('/fetch-subjects', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ categoryId: categoryId })
+            });
+            return response.json();
+        },
+
+        async fetchTopics(subjectId) {
+            const response = await fetch('/fetch-topics', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ subjectId: subjectId })
+            });
+            return response.json();
+        }
+    };
+
+    class DropdownManager {
+        static populateCategories(selectElementId) {
+            ApiUtils.fetchCategories()
+                .then(data => {
+                    const select = document.getElementById(selectElementId);
+                    select.innerHTML = '<option value="">Wybierz kategorię</option>';
+                    data.data.forEach(cat => {
+                        const option = document.createElement('option');
+                        option.value = cat.id;
+                        option.textContent = cat.categoryName || cat.name || `Category ${cat.id}`;
+                        select.appendChild(option);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching categories:', error);
+                });
+        }
+
+        static populateSubjects(categoryId, selectElementId) {
+            const select = document.getElementById(selectElementId);
+            
+            if (!categoryId) {
+                select.disabled = true;
+                select.innerHTML = '<option value="">Wybierz przedmiot</option>';
+                return;
+            }
+
+            ApiUtils.fetchSubjects(categoryId)
+                .then(data => {
+                    select.disabled = false;
+                    select.innerHTML = '<option value="">Wybierz przedmiot</option>';
+                    data.data.forEach(sub => {
+                        const option = document.createElement('option');
+                        option.value = sub.subjectName || sub.name;
+                        option.textContent = sub.subjectName || sub.name;
+                        option.dataset.subjectId = sub.id;
+                        select.appendChild(option);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching subjects:', error);
+                    select.innerHTML = '<option value="">Error loading subjects</option>';
+                });
+        }
+
+        static populateTopics(subjectId, selectElementId) {
+            const select = document.getElementById(selectElementId);
+            
+            if (!subjectId) {
+                select.disabled = true;
+                select.innerHTML = '<option value="">Wybierz temat</option>';
+                return;
+            }
+
+            ApiUtils.fetchTopics(subjectId)
+                .then(data => {
+                    select.disabled = false;
+                    select.innerHTML = '<option value="">Wybierz temat</option>';
+                    data.data.forEach(topic => {
+                        const option = document.createElement('option');
+                        option.value = topic.topicName || topic.name;
+                        option.textContent = topic.topicName || topic.name;
+                        select.appendChild(option);
+                    });
+                })
+                .catch(error => {
+                    console.error('Error fetching topics:', error);
+                    select.innerHTML = '<option value="">Error loading topics</option>';
+                });
+        }
+
+        static resetChildDropdowns(parentType, config) {
+            if (config.subject) {
+                const subjectSelect = document.getElementById(config.subject);
+                subjectSelect.disabled = true;
+                subjectSelect.innerHTML = '<option value="">Wybierz przedmiot</option>';
+            }
+            
+            if (config.topic) {
+                const topicSelect = document.getElementById(config.topic);
+                topicSelect.disabled = true;
+                topicSelect.innerHTML = '<option value="">Wybierz temat</option>';
+            }
+        }
+
+        static getSubjectIdFromName(categoryId, subjectName) {
+            return ApiUtils.fetchSubjects(categoryId)
+                .then(data => {
+                    const subject = data.data.find(s => (s.subjectName || s.name) === subjectName);
+                    return subject ? subject.id : null;
+                });
+        }
+    }
+
+    function setupEventHandlers() {
+        const viewConfig = DropdownConfig.view;
+        document.getElementById(viewConfig.category).addEventListener('change', function() {
+            const categoryId = this.value;
+            if (categoryId) {
+                DropdownManager.populateSubjects(categoryId, viewConfig.subject);
+            } else {
+                DropdownManager.resetChildDropdowns('category', viewConfig);
+            }
+        });
+
+        document.getElementById(viewConfig.subject).addEventListener('change', function() {
+            const subjectName = this.value;
+            const categoryId = document.getElementById(viewConfig.category).value;
+            
+            if (subjectName && categoryId) {
+                DropdownManager.getSubjectIdFromName(categoryId, subjectName)
+                    .then(subjectId => {
+                        if (subjectId) {
+                            DropdownManager.populateTopics(subjectId, viewConfig.topic);
+                        }
+                    });
+            } else {
+                const topicSelect = document.getElementById(viewConfig.topic);
+                topicSelect.disabled = true;
+                topicSelect.innerHTML = '<option value="">Wybierz temat</option>';
+            }
+        });
+
+        const genConfig = DropdownConfig.generate;
+        document.getElementById(genConfig.category).addEventListener('change', function() {
+            const categoryId = this.value;
+            if (categoryId) {
+                DropdownManager.populateSubjects(categoryId, genConfig.subject);
+            } else {
+                DropdownManager.resetChildDropdowns('category', genConfig);
+            }
+        });
+
+        document.getElementById(genConfig.subject).addEventListener('change', function() {
+            const subjectName = this.value;
+            const categoryId = document.getElementById(genConfig.category).value;
+            
+            if (subjectName && categoryId) {
+                DropdownManager.getSubjectIdFromName(categoryId, subjectName)
+                    .then(subjectId => {
+                        if (subjectId) {
+                            DropdownManager.populateTopics(subjectId, genConfig.topic);
+                        }
+                    });
+            } else {
+                const topicSelect = document.getElementById(genConfig.topic);
+                topicSelect.disabled = true;
+                topicSelect.innerHTML = '<option value="">Wybierz temat</option>';
+            }
+        });
+
+        const genAllConfig = DropdownConfig.generateAll;
+        document.getElementById(genAllConfig.category).addEventListener('change', function() {
+            const categoryId = this.value;
+            if (categoryId) {
+                DropdownManager.populateSubjects(categoryId, genAllConfig.subject);
+            } else {
+                const subjectSelect = document.getElementById(genAllConfig.subject);
+                subjectSelect.disabled = true;
+                subjectSelect.innerHTML = '<option value="">Wybierz przedmiot</option>';
+            }
+        });
+
+        const delConfig = DropdownConfig.delete;
+        document.getElementById(delConfig.category).addEventListener('change', function() {
+            const categoryId = this.value;
+            if (categoryId) {
+                DropdownManager.populateSubjects(categoryId, delConfig.subject);
+            } else {
+                DropdownManager.resetChildDropdowns('category', delConfig);
+            }
+        });
+
+        document.getElementById(delConfig.subject).addEventListener('change', function() {
+            const subjectName = this.value;
+            const categoryId = document.getElementById(delConfig.category).value;
+            
+            if (subjectName && categoryId) {
+                DropdownManager.getSubjectIdFromName(categoryId, subjectName)
+                    .then(subjectId => {
+                        if (subjectId) {
+                            DropdownManager.populateTopics(subjectId, delConfig.topic);
+                        }
+                    });
+            } else {
+                const topicSelect = document.getElementById(delConfig.topic);
+                topicSelect.disabled = true;
+                topicSelect.innerHTML = '<option value="">Wybierz temat</option>';
+            }
+        });
+
+        const viewExpConfig = DropdownConfig.viewExplanation;
+        document.getElementById(viewExpConfig.category).addEventListener('change', function() {
+            const categoryId = this.value;
+            if (categoryId) {
+                DropdownManager.populateSubjects(categoryId, viewExpConfig.subject);
+            } else {
+                DropdownManager.resetChildDropdowns('category', viewExpConfig);
+            }
+        });
+
+        document.getElementById(viewExpConfig.subject).addEventListener('change', function() {
+            const subjectName = this.value;
+            const categoryId = document.getElementById(viewExpConfig.category).value;
+            
+            if (subjectName && categoryId) {
+                DropdownManager.getSubjectIdFromName(categoryId, subjectName)
+                    .then(subjectId => {
+                        if (subjectId) {
+                            DropdownManager.populateTopics(subjectId, viewExpConfig.topic);
+                        }
+                    });
+            } else {
+                const topicSelect = document.getElementById(viewExpConfig.topic);
+                topicSelect.disabled = true;
+                topicSelect.innerHTML = '<option value="">Wybierz temat</option>';
+            }
+        });
+    }
+
+    function setupFormHandlers() {
+        document.getElementById('viewQuestionsForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const topicId = document.getElementById('topicIdView').value;
+            if (!topicId) return;
+
+            fetch('/fetch-questions-by-topic', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ topicId: topicId })
+            })
+            .then(response => response.json())
+            .then(data => {
+                const container = document.getElementById('questionsList');
+                if (data.error) {
+                    container.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                    return;
+                }
+                if (!data.data || data.data.length === 0) {
+                    container.innerHTML = '<p class="text-muted">No questions found for this topic.</p>';
+                    return;
+                }
+                
+                let html = '<h4>Questions:</h4><div class="row">';
+                data.data.forEach((q, index) => {
+                    html += `
+                        <div class="col-md-6 mb-3">
+                            <div class="card">
+                                <div class="card-body">
+                                    <h6 class="card-title">Question ${q.questionId}</h6>
+                                    <p class="card-text">${q.question || 'N/A'}</p>
+                                    ${q.description ? `<small class="text-muted">Explanation: ${q.description.substring(0, 100)}${q.description.length > 100 ? '...' : ''}</small>` : '<small class="text-warning">No explanation available</small>'}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                container.innerHTML = html;
+            })
+            .catch(error => {
+                document.getElementById('questionsList').innerHTML = `<div class="alert alert-danger">Error fetching questions: ${error.message}</div>`;
+            });
+        });
+        
+        document.getElementById('cancelAllTasksBtn').addEventListener('click', function() {
+            if (!confirm('Are you sure you want to cancel ALL running tasks? This action cannot be undone.')) {
+                return;
+            }
+            
+            const button = this;
+            const removeLoading = addLoadingState(button, 'Cancelling All Tasks...');
+            
+            fetch('/cancel-all-tasks', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    removeLoading();
+                    const statusDiv = document.getElementById('cancelAllStatus');
+                    
+                    if (data.status === 'success') {
+                        statusDiv.innerHTML = `
+                            <div class="alert alert-success alert-dismissible fade show">
+                                ${data.message}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        `;
+                        
+                        clearStatusMessages();
+                    } else {
+                        statusDiv.innerHTML = `
+                            <div class="alert alert-danger alert-dismissible fade show">
+                                Error: ${data.error || 'Failed to cancel tasks'}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        `;
+                    }
+                })
+                .catch(error => {
+                    removeLoading();
+                    document.getElementById('cancelAllStatus').innerHTML = `
+                        <div class="alert alert-danger alert-dismissible fade show">
+                            Network error: ${error.message}
+                            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                        </div>
+                    `;
+                });
+        });
+
+        document.getElementById('generateByTopicForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const categoryId = document.getElementById('categoryIdGen').value;
+            const subjectName = document.getElementById('subjectNameGen').value;
+            const topicName = document.getElementById('topicNameGen').value;
+            const overwriteExisting = document.getElementById('overwriteExistingTopic').checked;
+            
+            if (!categoryId || !subjectName || !topicName) {
+                document.getElementById('explanationTaskStatus').innerHTML = '<div class="alert alert-warning">Please select all fields.</div>';
+                return;
+            }
+            
+            fetch('/generate-category-questions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ categoryId, subjectName, topicName, overwriteExisting })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'started') {
+                    TaskManager.pollTaskStatus(data.taskId, 'explanationTaskStatus');
+                } else {
+                    document.getElementById('explanationTaskStatus').innerHTML = `<div class="alert alert-danger">Error starting task: ${data.error || 'Unknown error'}</div>`;
+                }
+            })
+            .catch(error => {
+                document.getElementById('explanationTaskStatus').innerHTML = `<div class="alert alert-danger">Network error: ${error.message}</div>`;
+            });
+        });
+
+        document.getElementById('generateAllTopicsForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const categoryId = document.getElementById('categoryIdAll').value;
+            const subjectName = document.getElementById('subjectNameAll').value;
+            const overwriteExisting = document.getElementById('overwriteExistingAll').checked;
+            
+            if (!categoryId || !subjectName) {
+                document.getElementById('explanationTaskStatus').innerHTML = '<div class="alert alert-warning">Please select category and subject.</div>';
+                return;
+            }
+            
+            fetch('/generate-all-topic-descriptions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ categoryId, subjectName, overwriteExisting })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'started') {
+                    TaskManager.pollTaskStatus(data.taskId, 'explanationTaskStatus');
+                } else {
+                    document.getElementById('explanationTaskStatus').innerHTML = `<div class="alert alert-danger">Error starting task: ${data.error || 'Unknown error'}</div>`;
+                }
+            })
+            .catch(error => {
+                document.getElementById('explanationTaskStatus').innerHTML = `<div class="alert alert-danger">Network error: ${error.message}</div>`;
+            });
+        });
+
+        document.getElementById('generateGlobalForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const overwriteExisting = document.getElementById('overwriteExistingGlobal').checked;
+            
+            fetch('/generate-missing-descriptions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ overwriteExisting })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'started') {
+                    TaskManager.pollTaskStatus(data.taskId, 'explanationTaskStatus');
+                } else {
+                    document.getElementById('explanationTaskStatus').innerHTML = `<div class="alert alert-danger">Error starting task: ${data.error || 'Unknown error'}</div>`;
+                }
+            })
+            .catch(error => {
+                document.getElementById('explanationTaskStatus').innerHTML = `<div class="alert alert-danger">Network error: ${error.message}</div>`;
+            });
+        });
+
+        document.getElementById('generateByQuestionIdForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const questionId = document.getElementById('questionIdGenerate').value;
+            
+            if (!questionId) {
+                document.getElementById('explanationTaskStatus').innerHTML = '<div class="alert alert-warning">Please enter a question ID.</div>';
+                return;
+            }
+            
+            fetch('/generate-single-question-description', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ questionId: parseInt(questionId) })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'started') {
+                    TaskManager.pollTaskStatus(data.taskId, 'explanationTaskStatus');
+                } else {
+                    document.getElementById('explanationTaskStatus').innerHTML = `<div class="alert alert-danger">Error starting task: ${data.error || 'Unknown error'}</div>`;
+                }
+            })
+            .catch(error => {
+                document.getElementById('explanationTaskStatus').innerHTML = `<div class="alert alert-danger">Network error: ${error.message}</div>`;
+            });
+        });
+
+        document.getElementById('viewExplanationByIdForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const questionId = document.getElementById('questionIdViewExp').value;
+            
+            if (!questionId) {
+                document.getElementById('explanationViewResults').innerHTML = '<div class="alert alert-warning">Please enter a question ID.</div>';
+                return;
+            }
+            
+            fetch('/fetch-question-explanation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ questionId: parseInt(questionId) })
+            })
+            .then(response => response.json())
+            .then(data => {
+                const container = document.getElementById('explanationViewResults');
+                if (data.error) {
+                    container.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                    return;
+                }
+                
+                if (!data.data) {
+                    container.innerHTML = '<div class="alert alert-warning">No explanation found for this question ID.</div>';
+                    return;
+                }
+                
+                const explanation = data.data;
+                container.innerHTML = `
+                    <div class="card mt-3">
+                        <div class="card-header">
+                            <h5 class="mb-0">Question ${explanation.questionId} - Explanation</h5>
+                        </div>
+                        <div class="card-body">
+                            <h6 class="card-title">Question:</h6>
+                            <p class="card-text">${explanation.question || 'N/A'}</p>
+                            
+                            ${explanation.options && explanation.options.length > 0 ? `
+                                <h6 class="card-title mt-3">Options:</h6>
+                                <ul class="list-group list-group-flush mb-3">
+                                    ${explanation.options.map((opt, idx) => `
+                                        <li class="list-group-item ${opt === explanation.correctAnswer ? 'list-group-item-success' : ''}">${String.fromCharCode(65 + idx)}. ${opt}</li>
+                                    `).join('')}
+                                </ul>
+                            ` : ''}
+                            
+                            ${explanation.correctAnswer ? `
+                                <h6 class="card-title">Correct Answer:</h6>
+                                <p class="text-success"><strong>${explanation.correctAnswer}</strong></p>
+                            ` : ''}
+                            
+                            <h6 class="card-title mt-3">Explanation:</h6>
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <div class="explanation-content">
+                                        ${explanation.explanation ? explanation.explanation.replace(/\n/g, '<br>') : 'No explanation available'}
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            })
+            .catch(error => {
+                document.getElementById('explanationViewResults').innerHTML = `<div class="alert alert-danger">Network error: ${error.message}</div>`;
+            });
+        });
+
+        document.getElementById('viewExplanationByTopicForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const categoryId = document.getElementById('categoryIdViewExp').value;
+            const subjectName = document.getElementById('subjectNameViewExp').value;
+            const topicName = document.getElementById('topicNameViewExp').value;
+            
+            if (!categoryId || !subjectName || !topicName) {
+                document.getElementById('explanationViewResults').innerHTML = '<div class="alert alert-warning">Please select all fields.</div>';
+                return;
+            }
+            
+            fetch('/fetch-explanations-by-topic', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ categoryId: parseInt(categoryId), subjectName, topicName })
+            })
+            .then(response => response.json())
+            .then(data => {
+                const container = document.getElementById('explanationViewResults');
+                if (data.error) {
+                    container.innerHTML = `<div class="alert alert-danger">${data.error}</div>`;
+                    return;
+                }
+                
+                if (!data.data || data.data.length === 0) {
+                    container.innerHTML = '<div class="alert alert-warning">No explanations found for this topic.</div>';
+                    return;
+                }
+                
+                let html = '<h4 class="mt-3">Question Explanations:</h4>';
+                data.data.forEach(explanation => {
+                    html += `
+                        <div class="card mt-3">
+                            <div class="card-header">
+                                <h5 class="mb-0">Question ${explanation.questionId} - Explanation</h5>
+                            </div>
+                            <div class="card-body">
+                                <h6 class="card-title">Question:</h6>
+                                <p class="card-text">${explanation.question || 'N/A'}</p>
+                                
+                                ${explanation.options && explanation.options.length > 0 ? `
+                                    <h6 class="card-title mt-3">Options:</h6>
+                                    <ul class="list-group list-group-flush mb-3">
+                                        ${explanation.options.map((opt, idx) => `
+                                            <li class="list-group-item ${opt === explanation.correctAnswer ? 'list-group-item-success' : ''}">${String.fromCharCode(65 + idx)}. ${opt}</li>
+                                        `).join('')}
+                                    </ul>
+                                ` : ''}
+                                
+                                ${explanation.correctAnswer ? `
+                                    <h6 class="card-title">Correct Answer:</h6>
+                                    <p class="text-success"><strong>${explanation.correctAnswer}</strong></p>
+                                ` : ''}
+                                
+                                <h6 class="card-title mt-3">Explanation:</h6>
+                                <div class="card bg-light">
+                                    <div class="card-body">
+                                        <div class="explanation-content" style="max-height: 400px; overflow-y: auto;">
+                                            ${explanation.explanation ? explanation.explanation.replace(/\n/g, '<br>') : 'No explanation available'}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                container.innerHTML = html;
+            })
+            .catch(error => {
+                document.getElementById('explanationViewResults').innerHTML = `<div class="alert alert-danger">Network error: ${error.message}</div>`;
+            });
+        });
+
+        document.getElementById('deleteByIdForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const questionId = document.getElementById('questionIdDelete').value;
+            
+            if (!questionId) {
+                document.getElementById('deleteStatus').innerHTML = '<div class="alert alert-warning">Please enter a question ID.</div>';
+                return;
+            }
+            
+            fetch('/delete-description', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ questionId: parseInt(questionId) })
+            })
+            .then(response => response.json())
+            .then(data => {
+                const statusDiv = document.getElementById('deleteStatus');
+                if (data.status === 'success') {
+                    statusDiv.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+                    document.getElementById('questionIdDelete').value = '';
+                } else {
+                    statusDiv.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+                }
+            })
+            .catch(error => {
+                document.getElementById('deleteStatus').innerHTML = `<div class="alert alert-danger">Network error: ${error.message}</div>`;
+            });
+        });
+
+        document.getElementById('deleteByTopicForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const categoryId = document.getElementById('categoryIdDel').value;
+            const subjectName = document.getElementById('subjectNameDel').value;
+            const topicName = document.getElementById('topicNameDel').value;
+            
+            if (!categoryId || !subjectName || !topicName) {
+                document.getElementById('deleteStatus').innerHTML = '<div class="alert alert-warning">Please select all fields.</div>';
+                return;
+            }
+            
+            fetch('/delete-question-descriptions-by-topic', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ categoryId: parseInt(categoryId), subjectName, topicName })
+            })
+            .then(response => response.json())
+            .then(data => {
+                const statusDiv = document.getElementById('deleteStatus');
+                if (data.status === 'success') {
+                    statusDiv.innerHTML = `<div class="alert alert-success">${data.message}</div>`;
+                } else {
+                    statusDiv.innerHTML = `<div class="alert alert-danger">${data.message}</div>`;
+                }
+            })
+            .catch(error => {
+                document.getElementById('deleteStatus').innerHTML = `<div class="alert alert-danger">Network error: ${error.message}</div>`;
+            });
+        });
+
+        document.getElementById('taskStatusForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const taskId = document.getElementById('taskId').value;
+            
+            if (!taskId) {
+                document.getElementById('taskStatusResult').innerHTML = '<div class="alert alert-warning">Please enter a task ID.</div>';
+                return;
+            }
+            
+            fetch(`/task-status/${taskId}`)
+                .then(response => response.json())
+                .then(data => {
+                    const resultDiv = document.getElementById('taskStatusResult');
+                    if (data.status === 'not_found') {
+                        resultDiv.innerHTML = '<div class="alert alert-warning">Task not found.</div>';
+                    } else {
+                        resultDiv.innerHTML = `<div class="card"><div class="card-body"><pre class="mb-0">${JSON.stringify(data, null, 2)}</pre></div></div>`;
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('taskStatusResult').innerHTML = `<div class="alert alert-danger">Error checking task status: ${error.message}</div>`;
+                });
+        });
+
+        document.getElementById('cancelTaskForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            const taskId = document.getElementById('cancelTaskId').value;
+            
+            if (!taskId) {
+                document.getElementById('cancelStatus').innerHTML = '<div class="alert alert-warning">Please enter a task ID.</div>';
+                return;
+            }
+            
+            fetch(`/cancel-task/${taskId}`, { method: 'POST' })
+                .then(response => {
+                    const statusDiv = document.getElementById('cancelStatus');
+                    if (response.ok) {
+                        statusDiv.innerHTML = '<div class="alert alert-success">Task cancellation requested.</div>';
+                        document.getElementById('cancelTaskId').value = '';
+                    } else {
+                        statusDiv.innerHTML = '<div class="alert alert-danger">Failed to cancel task.</div>';
+                    }
+                })
+                .catch(error => {
+                    document.getElementById('cancelStatus').innerHTML = `<div class="alert alert-danger">Network error: ${error.message}</div>`;
+                });
+        });
+    }
+
+    class TaskManager {
+        static pollTaskStatus(taskId, elementId) {
+            const element = document.getElementById(elementId);
+            element.innerHTML = `
+                <div class="task-status-container">
+                    <div class="alert alert-info">
+                        <div class="d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm me-2" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <div>
+                                <div>Task started. Checking status...</div>
+                                <small class="text-muted">Task ID: ${taskId}</small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="task-results-container"></div>
+            `;
+            
+            const poll = setInterval(() => {
+            fetch(`/task-status/${taskId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'completed' || data.status === 'failed' || data.status === 'cancelled') {
+                        clearInterval(poll);
+                        
+                        const alertType = data.status === 'completed' ? 'success' : 'danger';
+                        let html = `<div class="alert alert-${alertType}">
+                            <div>Task ${data.status}.</div>
+                            <small class="text-muted">Task ID: ${taskId}</small>`;
+                        
+                        if (data.error) {
+                            html += `<div class="mt-1">Error: ${data.error}</div>`;
+                        }
+                        
+                        html += '</div>';
+                        
+                        if (data.results && data.results.length > 0) {
+                            html += `<div class="card mt-2">
+                                <div class="card-header">
+                                    Final Results (${data.results.length} questions completed):
+                                </div>
+                                <div class="card-body">`;
+                            
+                            data.results.forEach(res => {
+                                html += `
+                                    <div class="mb-4">
+                                        <div class="card border-primary">
+                                            <div class="card-header bg-primary text-white">
+                                                <h6 class="mb-0">Question ${res.questionId} ✅ - Completed: ${res.completed_at || 'Just now'}</h6>
+                                            </div>
+                                            <div class="card-body">
+                                                <h6 class="card-title">Question:</h6>
+                                                <p class="card-text">${res.question || 'N/A'}</p>
+                                                
+                                                ${res.options && res.options.length > 0 ? `
+                                                    <h6 class="card-title mt-3">Options:</h6>
+                                                    <ul class="list-group list-group-flush mb-3">
+                                                        ${res.options.map((opt, idx) => `
+                                                            <li class="list-group-item ${opt === res.correctAnswer ? 'list-group-item-success' : ''}">${String.fromCharCode(65 + idx)}. ${opt}</li>
+                                                        `).join('')}
+                                                    </ul>
+                                                ` : ''}
+                                                
+                                                ${res.correctAnswer ? `
+                                                    <h6 class="card-title">Correct Answer:</h6>
+                                                    <p class="text-success"><strong>${res.correctAnswer}</strong></p>
+                                                ` : ''}
+                                                
+                                                <h6 class="card-title mt-3">Explanation:</h6>
+                                                <div class="card bg-light">
+                                                    <div class="card-body">
+                                                        <div class="explanation-content" style="max-height: 400px; overflow-y: auto;">
+                                                            ${res.explanation ? res.explanation.replace(/\n/g, '<br>') : 'No explanation available'}
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                            });
+                            
+                            html += '</div></div>';
+                        }
+                        
+                        element.innerHTML = html;
+                    } else {
+                        const currentScrollTop = element.scrollTop;
+                        
+                        let statusContainer = element.querySelector('.task-status-container');
+                        if (!statusContainer) {
+                            element.innerHTML = `
+                                <div class="task-status-container"></div>
+                                <div class="task-results-container"></div>
+                            `;
+                            statusContainer = element.querySelector('.task-status-container');
+                        }
+                        
+                        const progress = data.progress || 'Processing...';
+                        statusContainer.innerHTML = `
+                            <div class="alert alert-info">
+                                <div class="d-flex align-items-center">
+                                    <div class="spinner-border spinner-border-sm me-2" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <div>
+                                        <div>Task status: ${data.status} (Progress: ${progress} questions)</div>
+                                        <small class="text-muted">Task ID: ${taskId}</small>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        
+                        const resultsContainer = element.querySelector('.task-results-container');
+                        if (data.results && data.results.length > 0) {
+                            const currentResultsCount = resultsContainer.querySelectorAll('.result-item').length;
+                            if (data.results.length > currentResultsCount) {
+                                let resultsHtml = `
+                                    <div class="card mt-2">
+                                        <div class="card-header">
+                                            Completed Questions (${data.results.length}):
+                                        </div>
+                                        <div class="card-body" id="scrollable-results-${taskId}" style="max-height: 600px; overflow-y: auto;">
+                                            <div class="row">
+                                `;
+                                
+                                data.results.forEach(res => {
+                                    resultsHtml += `
+                                        <div class="col-12 mb-4 result-item">
+                                            <div class="card border-success">
+                                                <div class="card-header bg-success text-white">
+                                                    <h6 class="mb-0">Question ${res.questionId} ✅ - Completed: ${res.completed_at || 'Just now'}</h6>
+                                                </div>
+                                                <div class="card-body">
+                                                    <h6 class="card-title">Question:</h6>
+                                                    <p class="card-text">${res.question || 'N/A'}</p>
+                                                    
+                                                    ${res.options && res.options.length > 0 ? `
+                                                        <h6 class="card-title mt-3">Options:</h6>
+                                                        <ul class="list-group list-group-flush mb-3">
+                                                            ${res.options.map((opt, idx) => `
+                                                                <li class="list-group-item ${opt === res.correctAnswer ? 'list-group-item-success' : ''}">${String.fromCharCode(65 + idx)}. ${opt}</li>
+                                                            `).join('')}
+                                                        </ul>
+                                                    ` : ''}
+                                                    
+                                                    ${res.correctAnswer ? `
+                                                        <h6 class="card-title">Correct Answer:</h6>
+                                                        <p class="text-success"><strong>${res.correctAnswer}</strong></p>
+                                                    ` : ''}
+                                                    
+                                                    <h6 class="card-title mt-3">Explanation:</h6>
+                                                    <div class="card bg-light">
+                                                        <div class="card-body">
+                                                            <div class="explanation-content" style="max-height: 400px; overflow-y: auto;">
+                                                                ${res.explanation ? res.explanation.replace(/\n/g, '<br>') : 'No explanation available'}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    `;
+                                });
+                                
+                                resultsHtml += `
+                                            </div>
+                                        </div>
+                                    </div>
+                                `;
+                                
+                                const scrollableResults = document.getElementById(`scrollable-results-${taskId}`);
+                                const resultsScrollTop = scrollableResults ? scrollableResults.scrollTop : 0;
+                                
+                                resultsContainer.innerHTML = resultsHtml;
+                                
+                                const newScrollableResults = document.getElementById(`scrollable-results-${taskId}`);
+                                if (newScrollableResults) {
+                                    newScrollableResults.scrollTop = resultsScrollTop;
+                                }
+                            }
+                        }
+                    }
+                })
+                .catch(error => {
+                    clearInterval(poll);
+                    element.innerHTML = `<div class="alert alert-danger">Error polling task status: ${error.message}</div>`;
+                });
+        }, 2000);
+        }
+    }
+
+    document.addEventListener('DOMContentLoaded', function() {
+        Object.values(DropdownConfig).forEach(config => {
+            if (config.category) {
+                DropdownManager.populateCategories(config.category);
+            }
+        });
+
+        setupEventHandlers();
+        setupFormHandlers();
+        
+        console.log('Question Management page initialized successfully');
+    });
+
+    function clearStatusMessages() {
+        const statusElements = [
+            'questionsList',
+            'explanationTaskStatus', 
+            'deleteStatus',
+            'taskStatusResult',
+            'cancelStatus'
+        ];
+        
+        statusElements.forEach(id => {
+            const element = document.getElementById(id);
+            if (element) {
+                element.innerHTML = '';
+            }
+        });
+    }
+
+    window.addEventListener('unhandledrejection', function(event) {
+        console.error('Unhandled promise rejection:', event.reason);
+    });
+
+    function validateForm(formId, requiredFields) {
+        const form = document.getElementById(formId);
+        let isValid = true;
+        let missingFields = [];
+
+        requiredFields.forEach(fieldId => {
+            const field = document.getElementById(fieldId);
+            if (!field || !field.value.trim()) {
+                isValid = false;
+                missingFields.push(fieldId);
+                if (field) {
+                    field.classList.add('is-invalid');
+                } else {
+                    field.classList.remove('is-invalid');
+                }
+            }
+        });
+
+        if (!isValid) {
+            const alertDiv = form.querySelector('.validation-alert');
+            if (alertDiv) {
+                alertDiv.remove();
+            }
+            
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-warning validation-alert mt-2';
+            alert.textContent = `Please fill in all required fields: ${missingFields.join(', ')}`;
+            form.appendChild(alert);
+            
+            setTimeout(() => {
+                if (alert.parentNode) {
+                    alert.remove();
+                }
+            }, 5000);
+        }
+
+        return isValid;
+    }
+
+    document.addEventListener('keydown', function(event) {
+        if ((event.ctrlKey || event.metaKey) && event.key === 'Enter') {
+            const activeElement = document.activeElement;
+            const form = activeElement.closest('form');
+            if (form) {
+                form.dispatchEvent(new Event('submit'));
+            }
+        }
+        
+        if (event.key === 'Escape') {
+            clearStatusMessages();
+        }
+    });
+
+    function addLoadingState(button, text = 'Loading...') {
+        const originalText = button.textContent;
+        button.disabled = true;
+        button.innerHTML = `
+            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+            ${text}
+        `;
+        
+        return function removeLoadingState() {
+            button.disabled = false;
+            button.textContent = originalText;
+        };
+    }
+    
+    function updateRunningTasksCount() {
+        const activeTaskDisplays = document.querySelectorAll('.spinner-border');
+        const count = activeTaskDisplays.length;
+        
+        const countBadge = document.getElementById('runningTasksCount');
+        if (countBadge) {
+            if (count > 0) {
+                countBadge.textContent = `${count} tasks running`;
+                countBadge.className = 'badge bg-warning';
+            } else {
+                countBadge.textContent = 'No tasks running';
+                countBadge.className = 'badge bg-success';
+            }
+        }
+    }
+
+    setInterval(updateRunningTasksCount, 3000);
+
+    function handleApiError(error, retryFunction = null, maxRetries = 3) {
+        console.error('API Error:', error);
+        
+        let errorMessage = 'An error occurred. Please try again.';
+        
+        if (error.message) {
+            errorMessage = error.message;
+        } else if (typeof error === 'string') {
+            errorMessage = error;
+        }
+        
+        let alertHtml = `<div class="alert alert-danger alert-dismissible fade show" role="alert">
+            ${errorMessage}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>`;
+            
+        if (retryFunction && maxRetries > 0) {
+            alertHtml += `
+                <div class="mt-2">
+                    <button type="button" class="btn btn-sm btn-outline-danger" onclick="(${retryFunction})()">
+                        Retry
+                    </button>
+                </div>`;
+        }
+        
+        alertHtml += '</div>';
+        
+        return alertHtml;
+    }
+
+    function setupAutoSave() {
+        const forms = document.querySelectorAll('form');
+        forms.forEach(form => {
+            const inputs = form.querySelectorAll('input, select, textarea');
+            inputs.forEach(input => {
+                input.addEventListener('change', function() {
+                    const key = `autosave_${form.id}_${input.id}`;
+                    if (input.value) {
+                        localStorage.setItem(key, input.value);
+                    } else {
+                        localStorage.removeItem(key);
+                    }
+                });
+            });
+        });
+    }
+
+    function restoreAutoSavedData() {
+        const forms = document.querySelectorAll('form');
+        forms.forEach(form => {
+            const inputs = form.querySelectorAll('input, select, textarea');
+            inputs.forEach(input => {
+                const key = `autosave_${form.id}_${input.id}`;
+                const savedValue = localStorage.getItem(key);
+                if (savedValue && !input.value) {
+                    input.value = savedValue;
+                    input.dispatchEvent(new Event('change'));
+                }
+            });
+        });
+    }
+
+    function clearAutoSavedData(formId) {
+        const form = document.getElementById(formId);
+        if (form) {
+            const inputs = form.querySelectorAll('input, select, textarea');
+            inputs.forEach(input => {
+                const key = `autosave_${formId}_${input.id}`;
+                localStorage.removeItem(key);
+            });
+        }
+    }
+
+    function scrollToSection(sectionId) {
+        const section = document.getElementById(sectionId);
+        if (section) {
+            section.scrollIntoView({ 
+                behavior: 'smooth',
+                block: 'start'
+            });
+        }
+    }
+
+    function initializeTooltips() {
+        const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        if (window.bootstrap && bootstrap.Tooltip) {
+            tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl);
+            });
+        }
+    }
+
+    function logPerformance(action, startTime) {
+        const endTime = performance.now();
+        console.log(`${action} took ${endTime - startTime} milliseconds`);
+    }
+</script>
+
+{% endblock %}
