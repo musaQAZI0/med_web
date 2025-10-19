@@ -1,0 +1,36 @@
+services:
+  - type: web
+    name: medfellow
+    env: python
+    region: oregon
+    plan: starter
+    branch: main
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn app:app --bind 0.0.0.0:$PORT"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: SECRET_KEY
+        generateValue: true
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: MYSQL_PASSWORD
+        sync: false
+      - key: MYSQL_HOST
+        value: tramway.proxy.rlwy.net
+      - key: MYSQL_PORT
+        value: 51549
+      - key: MYSQL_USER
+        value: root
+      - key: MYSQL_DATABASE
+        value: railway
+      - key: USE_PHP_BRIDGE
+        value: True
+      - key: PHP_BRIDGE_URL
+        value: https://medfellows.app/db_query.php
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
