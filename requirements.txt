@@ -6,3 +6,6 @@ openai==2.3.0
 python-dotenv==1.0.0
 PyMuPDF>=1.24.0
 pandas>=2.1.0
+cloudinary==1.36.0
+Werkzeug==3.0.1
+requests==2.31.0
