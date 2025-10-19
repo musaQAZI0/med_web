@@ -24,10 +24,6 @@ def questions():
 def mcq_generation():
     return render_template('mcq_generation.html')
 
-@app.route('/task-manager')
-def task_manager():
-    return render_template('task_manager.html')
-
 
 @app.route('/health', methods=['GET'])
 def health():
@@ -379,43 +375,6 @@ def task_status_check(task_id):
     return jsonify(task)
 
 
-# NEW: Get All Running Tasks
-@app.route('/running-tasks', methods=['GET'])
-def get_running_tasks():
-    """
-    Returns a list of all currently running/active tasks.
-    Useful for showing users what tasks are still processing after browser close.
-    """
-    try:
-        running_tasks_info = tasks.get_running_tasks_info()
-        return jsonify({
-            "status": "success",
-            "running_count": len(running_tasks_info),
-            "tasks": running_tasks_info
-        })
-    except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
-
-
-# NEW: Get All Tasks (Running + Completed)
-@app.route('/all-tasks', methods=['GET'])
-def get_all_tasks():
-    """
-    Returns all tasks (running, completed, failed).
-    Optionally filter by status: ?status=processing or ?status=completed
-    """
-    try:
-        status_filter = request.args.get('status', None)
-        all_tasks_info = tasks.get_all_tasks_info(status_filter)
-        return jsonify({
-            "status": "success",
-            "total_count": len(all_tasks_info),
-            "tasks": all_tasks_info
-        })
-    except Exception as e:
-        return jsonify({"status": "error", "error": str(e)}), 500
-
-
 # Cancel Task
 @app.route('/cancel-task/<task_id>', methods=['POST'])
 def cancel_task(task_id):
@@ -451,7 +410,96 @@ def get_mcq_status(task_id):
     if not task_info or task_info.get("status") == "not_found":
         return jsonify({'error': 'Invalid task ID'}), 404
     return jsonify(task_info)
+    
+    
+#New routes for persistency
+@app.route('/all-tasks', methods=['GET'])
+def get_all_tasks():
+    """Get all tasks with their status"""
+    try:
+        all_tasks = tasks.get_all_tasks()
+        return jsonify({
+            "status": "success",
+            "tasks": all_tasks,
+            "count": len(all_tasks)
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
+
+@app.route('/running-tasks', methods=['GET'])
+def get_running_tasks():
+    """Get only running tasks"""
+    try:
+        running_info = tasks.get_running_tasks_info()
+        return jsonify({
+            "status": "success",
+            "tasks": running_info,
+            "count": len(running_info)
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
+
+@app.route('/task-details/<task_id>', methods=['GET'])
+def get_task_details(task_id):
+    """Get detailed information about a specific task including recent results"""
+    try:
+        status = tasks.get_task_status(task_id)
+        if status.get("status") == "not_found":
+            return jsonify({
+                "status": "error",
+                "error": "Task not found"
+            }), 404
+        
+        # Get the last 5 results if available
+        recent_results = status.get("results", [])[-5:] if status.get("results") else []
+        
+        return jsonify({
+            "status": "success",
+            "task": {
+                **status,
+                "recent_results": recent_results,
+                "total_results": len(status.get("results", []))
+            }
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
+
+@app.route('/clear-completed-tasks', methods=['POST'])
+def clear_completed_tasks():
+    """Clear all completed/failed/cancelled tasks from memory"""
+    try:
+        cleared_count = 0
+        task_ids_to_remove = []
+        
+        for task_id, status in tasks.task_status.items():
+            if status.get("status") in ["completed", "failed", "cancelled"]:
+                task_ids_to_remove.append(task_id)
+        
+        for task_id in task_ids_to_remove:
+            tasks.task_status.pop(task_id, None)
+            cleared_count += 1
+        
+        tasks.save_task_status()
+        
+        return jsonify({
+            "status": "success",
+            "message": f"Cleared {cleared_count} completed tasks",
+            "cleared_count": cleared_count
+        })
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error": str(e)
+        }), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(debug=False, host='0.0.0.0', port=port)
+    app.run(debug=True, host='0.0.0.0', port=5000)

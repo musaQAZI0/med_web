@@ -10,6 +10,17 @@ import cloudinary
 import cloudinary.uploader
 from config import Config
 
+#Tasks Infringment
+import json
+import pickle
+from pathlib import Path
+
+#Persistence, using file data
+TASK_PERSISTENCE_DIR = Path("task_data")
+TASK_PERSISTENCE_DIR.mkdir(exist_ok=True)
+TASK_STATUS_FILE = TASK_PERSISTENCE_DIR / "task_status.json"
+RUNNING_TASKS_FILE = TASK_PERSISTENCE_DIR / "running_tasks.pkl"
+
 # Initialize Cloudinary
 cloudinary.config(
     cloud_name=Config.CLOUDINARY_CLOUD_NAME,
@@ -17,6 +28,82 @@ cloudinary.config(
     api_secret=Config.CLOUDINARY_API_SECRET,
     secure=True
 )
+
+def save_task_status():
+    """Persist task_status to disk"""
+    try:
+        # Create a serializable version of task_status
+        serializable_status = {}
+        for task_id, status in task_status.items():
+            serializable_status[task_id] = {
+                "status": status.get("status"),
+                "progress": status.get("progress"),
+                "total": status.get("total", 0),
+                "error": status.get("error"),
+                "started_at": status.get("started_at"),
+                "completed_at": status.get("completed_at"),
+                "task_type": status.get("task_type"),
+                "task_params": status.get("task_params"),
+                # Don't save results to keep file size manageable
+                "results_count": len(status.get("results", []))
+            }
+        
+        with open(TASK_STATUS_FILE, 'w') as f:
+            json.dump(serializable_status, f, indent=2)
+    except Exception as e:
+        print(f"Error saving task status: {e}")
+
+def load_task_status():
+    """Load task_status from disk"""
+    global task_status
+    try:
+        if TASK_STATUS_FILE.exists():
+            with open(TASK_STATUS_FILE, 'r') as f:
+                loaded_status = json.load(f)
+                
+                # Restore to task_status with empty results
+                for task_id, status in loaded_status.items():
+                    task_status[task_id] = {
+                        "status": status.get("status"),
+                        "progress": status.get("progress"),
+                        "total": status.get("total", 0),
+                        "error": status.get("error"),
+                        "started_at": status.get("started_at"),
+                        "completed_at": status.get("completed_at"),
+                        "task_type": status.get("task_type"),
+                        "task_params": status.get("task_params"),
+                        "results": [],  # Empty results array
+                        "results_count": status.get("results_count", 0)
+                    }
+                print(f"Loaded {len(task_status)} tasks from disk")
+    except Exception as e:
+        print(f"Error loading task status: {e}")
+
+def get_all_tasks():
+    """Get information about all tasks (running and completed)"""
+    info = {}
+    for task_id, status in task_status.items():
+        is_running = task_id in running_tasks
+        thread_alive = False
+        if is_running and "thread" in running_tasks[task_id]:
+            thread_alive = running_tasks[task_id]["thread"].is_alive()
+        
+        info[task_id] = {
+            "status": status.get("status", "unknown"),
+            "progress": status.get("progress", 0),
+            "total": status.get("total", 0),
+            "started_at": status.get("started_at", "unknown"),
+            "completed_at": status.get("completed_at"),
+            "task_type": status.get("task_type", "unknown"),
+            "task_params": status.get("task_params", {}),
+            "is_running": is_running,
+            "thread_alive": thread_alive,
+            "error": status.get("error"),
+            "results_count": status.get("results_count", len(status.get("results", [])))
+        }
+    return info
+
+load_task_status()
 
 task_status = {}
 running_tasks = {}
@@ -43,68 +130,37 @@ def cancel_all_tasks():
 
 def get_running_tasks_info():
     """Get information about all running tasks"""
-    info = []
+    info = {}
     for task_id, task_info in running_tasks.items():
         status = task_status.get(task_id, {})
-        info.append({
-            "task_id": task_id,
+        info[task_id] = {
             "status": status.get("status", "unknown"),
             "progress": status.get("progress", 0),
-            "total": status.get("total", 0),
-            "thread_alive": task_info["thread"].is_alive() if "thread" in task_info else False,
-            "latest_result": status.get("latest_result", None)
-        })
-    return info
-
-
-def get_all_tasks_info(status_filter=None):
-    """
-    Get information about all tasks (running, completed, failed).
-    Optionally filter by status.
-    """
-    info = []
-    for task_id, status in task_status.items():
-        # Apply status filter if provided
-        if status_filter and status.get("status") != status_filter:
-            continue
-
-        # Check if task is still running
-        is_running = task_id in running_tasks
-        thread_alive = False
-        if is_running and "thread" in running_tasks[task_id]:
-            thread_alive = running_tasks[task_id]["thread"].is_alive()
-
-        info.append({
-            "task_id": task_id,
-            "status": status.get("status", "unknown"),
-            "progress": status.get("progress", 0),
-            "total": status.get("total", 0),
-            "is_running": is_running,
-            "thread_alive": thread_alive,
-            "error": status.get("error", None),
-            "latest_result": status.get("latest_result", None),
-            "results_count": len(status.get("results", []))
-        })
-
-    # Sort by status: processing first, then queued, then completed, then failed
-    status_priority = {"processing": 1, "queued": 2, "completed": 3, "failed": 4, "cancelled": 5}
-    info.sort(key=lambda x: status_priority.get(x["status"], 999))
-
+            "started": task_info.get("started", "unknown"),
+            "thread_alive": task_info["thread"].is_alive() if "thread" in task_info else False
+        }
     return info
 
 # --- Single Question Explanation Task ---
 def start_single_question_explanation_task(question_id):
     task_id = str(uuid.uuid4())
-    task_status[task_id] = {"status": "queued", "progress": 0, "results": [], "error": None}
-
-    thread = threading.Thread(
-        target=process_single_question_explanation,
-        args=(task_id, question_id),
-        daemon=False  # IMPORTANT: Non-daemon thread keeps running after browser close
-    )
+    task_status[task_id] = {
+        "status": "queued", 
+        "progress": 0, 
+        "results": [], 
+        "error": None,
+        "started_at": time.strftime('%Y-%m-%d %H:%M:%S'),
+        "task_type": "single_question_explanation",
+        "task_params": {
+            "question_id": question_id
+        }
+    }
+    save_task_status()
+    
+    thread = threading.Thread(target=process_single_question_explanation, args=(task_id, question_id))
     running_tasks[task_id] = {'thread': thread, 'cancelled': False}
     thread.start()
-
+    
     return task_id
 
 def process_single_question_explanation(task_id, question_id):
@@ -224,17 +280,25 @@ def start_explanation_task(category_id, subject_name, topic_name, generate_all=F
         "progress": 0, 
         "total": 0,
         "results": [], 
-        "error": None
+        "error": None,
+        "started_at": time.strftime('%Y-%m-%d %H:%M:%S'),
+        "task_type": "explanation_generation",
+        "task_params": {
+            "category_id": category_id,
+            "subject_name": subject_name,
+            "topic_name": topic_name,
+            "generate_all": generate_all
+        }
     }
+    save_task_status()
     
     thread = threading.Thread(
-        target=process_question_explanation,
-        args=(task_id, category_id, subject_name, topic_name, generate_all, max_workers),
-        daemon=False  # IMPORTANT: Non-daemon thread keeps running after browser close
+        target=process_question_explanation, 
+        args=(task_id, category_id, subject_name, topic_name, generate_all, max_workers)
     )
     running_tasks[task_id] = {'thread': thread, 'cancelled': False}
     thread.start()
-
+    
     return task_id
 
 
@@ -242,6 +306,7 @@ def process_question_explanation(task_id, category_id, subject_name, topic_name,
     try:
         with status_lock:
             task_status[task_id]["status"] = "processing"
+            save_task_status()
         
         # Get subject ID
         query_subject = "SELECT id FROM subject WHERE categoryId = %s AND subjectName = %s"
@@ -307,6 +372,7 @@ def process_question_explanation(task_id, category_id, subject_name, topic_name,
         # Update total count
         with status_lock:
             task_status[task_id]["total"] = len(questions)
+            save_task_status()
 
         # Process questions in parallel using ThreadPoolExecutor
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -346,6 +412,7 @@ def process_question_explanation(task_id, category_id, subject_name, topic_name,
                         task_status[task_id]["progress"] = len(task_status[task_id]["results"])
                         task_status[task_id]["status"] = "processing"
                         task_status[task_id]["latest_result"] = result
+                        save_task_status()
                     
                     print(f"Completed question {result['questionId']} ({task_status[task_id]['progress']}/{task_status[task_id]['total']})")
                     
@@ -363,6 +430,8 @@ def process_question_explanation(task_id, category_id, subject_name, topic_name,
         # Mark as completed
         with status_lock:
             task_status[task_id]["status"] = "completed"
+            task_status[task_id]["completed_at"] = time.strftime('%Y-%m-%d %H:%M:%S')
+            save_task_status()
         running_tasks.pop(task_id, None)
 
     except Exception as outer_e:
@@ -508,22 +577,24 @@ def start_mcq_generation_task(pdf_file, filename):
         'status': 'queued',
         'progress': 'Queued',
         'download_url': None,
-        'error': None
+        'error': None,
+        "started_at": time.strftime('%Y-%m-%d %H:%M:%S'),
+        "task_type": "mcq_generation",
+        "task_params": {
+            "filename": filename
+        }
     }
+    save_task_status()
     
     # Save PDF temporarily
     pdf_path = os.path.join('uploads', f"{task_id}_{filename}")
     os.makedirs('uploads', exist_ok=True)
     pdf_file.save(pdf_path)
-
-    thread = threading.Thread(
-        target=process_mcqs_task,
-        args=(task_id, pdf_path, filename),
-        daemon=False  # IMPORTANT: Non-daemon thread keeps running after browser close
-    )
+    
+    thread = threading.Thread(target=process_mcqs_task, args=(task_id, pdf_path, filename))
     running_tasks[task_id] = {'thread': thread, 'cancelled': False}
     thread.start()
-
+    
     return task_id
 
 def process_mcqs_task(task_id, pdf_path, filename):

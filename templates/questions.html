@@ -50,6 +50,48 @@
     <div id="cancelAllStatus" class="mt-2"></div>
 </div>
 
+
+<!-- View All Tasks, Added -->
+<div class="section">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>All Tasks History</h3>
+        <div>
+            <button id="refreshTasksBtn" class="btn btn-sm btn-outline-primary me-2">
+                <i class="bi bi-arrow-clockwise"></i> Refresh
+            </button>
+            <button id="clearCompletedBtn" class="btn btn-sm btn-outline-secondary">
+                <i class="bi bi-trash"></i> Clear Completed
+            </button>
+        </div>
+    </div>
+    
+    <div class="mb-3">
+        <ul class="nav nav-pills" id="taskFilterTabs">
+            <li class="nav-item">
+                <a class="nav-link active" href="#" data-filter="all">All (<span id="count-all">0</span>)</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#" data-filter="processing">Running (<span id="count-processing">0</span>)</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#" data-filter="completed">Completed (<span id="count-completed">0</span>)</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#" data-filter="failed">Failed (<span id="count-failed">0</span>)</a>
+            </li>
+            <li class="nav-item">
+                <a class="nav-link" href="#" data-filter="cancelled">Cancelled (<span id="count-cancelled">0</span>)</a>
+            </li>
+        </ul>
+    </div>
+    
+    <div id="allTasksList" class="mt-3">
+        <div class="text-center text-muted">
+            <p>Loading tasks...</p>
+        </div>
+    </div>
+</div>
+
 <!-- Generate Explanations -->
 <div class="section">
     <h3>Generuj wyjaśnienia pytań</h3>
@@ -1423,6 +1465,324 @@
         const endTime = performance.now();
         console.log(`${action} took ${endTime - startTime} milliseconds`);
     }
+    
+    
+    //This is js for tasks saves
+    class TaskHistoryManager {
+        constructor() {
+            this.currentFilter = 'all';
+            this.tasks = {};
+            this.refreshInterval = null;
+        }
+        
+        async loadAllTasks() {
+            try {
+                const response = await fetch('/all-tasks');
+                const data = await response.json();
+                
+                if (data.status === 'success') {
+                    this.tasks = data.tasks;
+                    this.renderTasks();
+                    this.updateCounts();
+                }
+            } catch (error) {
+                console.error('Error loading tasks:', error);
+                document.getElementById('allTasksList').innerHTML = `
+                    <div class="alert alert-danger">Error loading tasks: ${error.message}</div>
+                `;
+            }
+        }
+        
+        renderTasks() {
+            const container = document.getElementById('allTasksList');
+            const taskIds = Object.keys(this.tasks);
+            
+            if (taskIds.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted"><p>No tasks found</p></div>';
+                return;
+            }
+            
+            // Filter tasks
+            const filteredTasks = taskIds.filter(taskId => {
+                const task = this.tasks[taskId];
+                if (this.currentFilter === 'all') return true;
+                if (this.currentFilter === 'processing') {
+                    return task.status === 'processing' || task.status === 'queued';
+                }
+                return task.status === this.currentFilter;
+            });
+            
+            if (filteredTasks.length === 0) {
+                container.innerHTML = `<div class="text-center text-muted"><p>No ${this.currentFilter} tasks</p></div>`;
+                return;
+            }
+            
+            // Sort by started_at (most recent first)
+            filteredTasks.sort((a, b) => {
+                const timeA = this.tasks[a].started_at || '';
+                const timeB = this.tasks[b].started_at || '';
+                return timeB.localeCompare(timeA);
+            });
+            
+            let html = '<div class="row">';
+            
+            filteredTasks.forEach(taskId => {
+                const task = this.tasks[taskId];
+                html += this.renderTaskCard(taskId, task);
+            });
+            
+            html += '</div>';
+            container.innerHTML = html;
+        }
+        
+        renderTaskCard(taskId, task) {
+            const statusColors = {
+                'completed': 'success',
+                'failed': 'danger',
+                'cancelled': 'warning',
+                'processing': 'info',
+                'queued': 'secondary'
+            };
+            
+            const statusColor = statusColors[task.status] || 'secondary';
+            const progressPercent = task.total > 0 ? Math.round((task.progress / task.total) * 100) : 0;
+            
+            const taskTypeLabels = {
+                'explanation_generation': 'Explanation Generation',
+                'single_question_explanation': 'Single Question',
+                'mcq_generation': 'MCQ Generation'
+            };
+            
+            const taskTypeLabel = taskTypeLabels[task.task_type] || task.task_type;
+            
+            // Build task params display
+            let paramsHtml = '';
+            if (task.task_params) {
+                if (task.task_params.subject_name) {
+                    paramsHtml += `<small class="text-muted d-block">Subject: ${task.task_params.subject_name}</small>`;
+                }
+                if (task.task_params.topic_name) {
+                    paramsHtml += `<small class="text-muted d-block">Topic: ${task.task_params.topic_name}</small>`;
+                }
+                if (task.task_params.question_id) {
+                    paramsHtml += `<small class="text-muted d-block">Question ID: ${task.task_params.question_id}</small>`;
+                }
+                if (task.task_params.filename) {
+                    paramsHtml += `<small class="text-muted d-block">File: ${task.task_params.filename}</small>`;
+                }
+            }
+            
+            return `
+                <div class="col-md-6 col-lg-4 mb-3">
+                    <div class="card border-${statusColor}">
+                        <div class="card-header bg-${statusColor} text-white">
+                            <div class="d-flex justify-content-between align-items-center">
+                                <small>${taskTypeLabel}</small>
+                                <span class="badge bg-light text-dark">${task.status}</span>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <h6 class="card-title">Task ID</h6>
+                            <p class="small font-monospace text-truncate">${taskId}</p>
+                            
+                            ${paramsHtml}
+                            
+                            <hr>
+                            
+                            <div class="mb-2">
+                                <small class="text-muted">Started: ${task.started_at || 'N/A'}</small>
+                            </div>
+                            
+                            ${task.completed_at ? `
+                                <div class="mb-2">
+                                    <small class="text-muted">Completed: ${task.completed_at}</small>
+                                </div>
+                            ` : ''}
+                            
+                            ${task.status === 'processing' || task.status === 'queued' ? `
+                                <div class="mb-2">
+                                    <div class="progress">
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                             role="progressbar" 
+                                             style="width: ${progressPercent}%" 
+                                             aria-valuenow="${task.progress}" 
+                                             aria-valuemin="0" 
+                                             aria-valuemax="${task.total}">
+                                            ${task.progress}/${task.total}
+                                        </div>
+                                    </div>
+                                    <small class="text-muted">${progressPercent}% complete</small>
+                                </div>
+                            ` : ''}
+                            
+                            ${task.results_count > 0 ? `
+                                <div class="mb-2">
+                                    <small class="text-success">
+                                        <i class="bi bi-check-circle"></i> ${task.results_count} results
+                                    </small>
+                                </div>
+                            ` : ''}
+                            
+                            ${task.error ? `
+                                <div class="alert alert-danger alert-sm p-2 mb-2">
+                                    <small>${task.error}</small>
+                                </div>
+                            ` : ''}
+                            
+                            <div class="btn-group btn-group-sm w-100" role="group">
+                                <button class="btn btn-outline-primary" onclick="viewTaskDetails('${taskId}')">
+                                    <i class="bi bi-eye"></i> View
+                                </button>
+                                ${task.is_running ? `
+                                    <button class="btn btn-outline-danger" onclick="cancelTaskById('${taskId}')">
+                                        <i class="bi bi-stop-circle"></i> Cancel
+                                    </button>
+                                ` : ''}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+        
+        updateCounts() {
+            const counts = {
+                all: 0,
+                processing: 0,
+                completed: 0,
+                failed: 0,
+                cancelled: 0
+            };
+            
+            Object.values(this.tasks).forEach(task => {
+                counts.all++;
+                if (task.status === 'processing' || task.status === 'queued') {
+                    counts.processing++;
+                } else if (task.status === 'completed') {
+                    counts.completed++;
+                } else if (task.status === 'failed') {
+                    counts.failed++;
+                } else if (task.status === 'cancelled') {
+                    counts.cancelled++;
+                }
+            });
+            
+            Object.keys(counts).forEach(filter => {
+                const countEl = document.getElementById(`count-${filter}`);
+                if (countEl) {
+                    countEl.textContent = counts[filter];
+                }
+            });
+        }
+        
+        setFilter(filter) {
+            this.currentFilter = filter;
+            
+            // Update active tab
+            document.querySelectorAll('#taskFilterTabs .nav-link').forEach(link => {
+                link.classList.remove('active');
+            });
+            document.querySelector(`#taskFilterTabs [data-filter="${filter}"]`).classList.add('active');
+            
+            this.renderTasks();
+        }
+        
+        startAutoRefresh() {
+            this.refreshInterval = setInterval(() => {
+                this.loadAllTasks();
+            }, 5000); // Refresh every 5 seconds
+        }
+        
+        stopAutoRefresh() {
+            if (this.refreshInterval) {
+                clearInterval(this.refreshInterval);
+                this.refreshInterval = null;
+            }
+        }
+    }
+    
+    // Initialize task history manager
+    const taskHistory = new TaskHistoryManager();
+    
+    // Setup event listeners
+    document.getElementById('refreshTasksBtn').addEventListener('click', () => {
+        taskHistory.loadAllTasks();
+    });
+    
+    document.getElementById('clearCompletedBtn').addEventListener('click', async () => {
+        if (!confirm('Clear all completed, failed, and cancelled tasks from history?')) {
+            return;
+        }
+        
+        try {
+            const response = await fetch('/clear-completed-tasks', { method: 'POST' });
+            const data = await response.json();
+            
+            if (data.status === 'success') {
+                alert(data.message);
+                taskHistory.loadAllTasks();
+            } else {
+                alert('Error: ' + data.error);
+            }
+        } catch (error) {
+            alert('Network error: ' + error.message);
+        }
+    });
+    
+    document.querySelectorAll('#taskFilterTabs .nav-link').forEach(link => {
+        link.addEventListener('click', (e) => {
+            e.preventDefault();
+            const filter = e.currentTarget.dataset.filter;
+            taskHistory.setFilter(filter);
+        });
+    });
+    
+    // Global functions for task actions
+    window.viewTaskDetails = function(taskId) {
+        TaskManager.pollTaskStatus(taskId, 'explanationTaskStatus');
+        scrollToSection('explanationTaskStatus');
+    };
+    
+    window.cancelTaskById = function(taskId) {
+        if (!confirm('Cancel this task?')) {
+            return;
+        }
+        
+        fetch(`/cancel-task/${taskId}`, { method: 'POST' })
+            .then(response => response.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    alert('Task cancelled');
+                    taskHistory.loadAllTasks();
+                } else {
+                    alert('Error cancelling task');
+                }
+            })
+            .catch(error => {
+                alert('Network error: ' + error.message);
+            });
+    };
+    
+    // Load tasks on page load
+    document.addEventListener('DOMContentLoaded', function() {
+        // ... existing DOMContentLoaded code ...
+        
+        // Initialize task history
+        taskHistory.loadAllTasks();
+        taskHistory.startAutoRefresh();
+    });
+    
+    // Stop auto-refresh when page is hidden
+    document.addEventListener('visibilitychange', function() {
+        if (document.hidden) {
+            taskHistory.stopAutoRefresh();
+        } else {
+            taskHistory.startAutoRefresh();
+            taskHistory.loadAllTasks();
+        }
+    });
+    
+    
 </script>
 
 {% endblock %}
