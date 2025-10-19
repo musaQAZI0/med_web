@@ -32,26 +32,54 @@ def health():
     """
     health_info = {}
     tables_info = {}
-    
+
     # --- Check Database Connection ---
     try:
         test_query = "SELECT 1 as test"
         result = database.execute_query(test_query)
-        if result.get("data") and result["data"][0]["test"] == 1:
+
+        # Add debug info
+        health_info["php_bridge_enabled"] = Config.USE_PHP_BRIDGE
+        health_info["php_bridge_url"] = Config.PHP_BRIDGE_URL if Config.USE_PHP_BRIDGE else None
+
+        if result.get("error"):
+            health_info = {
+                "status": "unhealthy",
+                "database": "disconnected",
+                "error": result.get("error"),
+                "php_bridge_enabled": Config.USE_PHP_BRIDGE,
+                "php_bridge_url": Config.PHP_BRIDGE_URL if Config.USE_PHP_BRIDGE else None
+            }
+        elif result.get("data") and len(result["data"]) > 0 and result["data"][0].get("test") == 1:
             health_info = {
                 "status": "healthy",
                 "database": "connected",
                 "host": Config.MYSQL_HOST,
                 "port": Config.MYSQL_PORT,
-                "database_name": Config.MYSQL_DATABASE
+                "database_name": Config.MYSQL_DATABASE,
+                "php_bridge_enabled": Config.USE_PHP_BRIDGE,
+                "php_bridge_url": Config.PHP_BRIDGE_URL if Config.USE_PHP_BRIDGE else None
             }
         else:
-            health_info = {"status": "unhealthy", "database": "disconnected", "error": "Test query failed"}
+            health_info = {
+                "status": "unhealthy",
+                "database": "disconnected",
+                "error": "Test query failed - unexpected response format",
+                "result": result,
+                "php_bridge_enabled": Config.USE_PHP_BRIDGE,
+                "php_bridge_url": Config.PHP_BRIDGE_URL if Config.USE_PHP_BRIDGE else None
+            }
     except Exception as e:
-        health_info = {"status": "unhealthy", "database": "error", "error": str(e)}
+        health_info = {
+            "status": "unhealthy",
+            "database": "error",
+            "error": str(e),
+            "php_bridge_enabled": Config.USE_PHP_BRIDGE,
+            "php_bridge_url": Config.PHP_BRIDGE_URL if Config.USE_PHP_BRIDGE else None
+        }
 
     response_data = {**health_info}
-    
+
     status_code = 200 if health_info.get("status") == "healthy" else 500
     return jsonify(response_data), status_code
 
