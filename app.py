@@ -50,16 +50,28 @@ def health():
                 "php_bridge_enabled": Config.USE_PHP_BRIDGE,
                 "php_bridge_url": Config.PHP_BRIDGE_URL if Config.USE_PHP_BRIDGE else None
             }
-        elif result.get("data") and len(result["data"]) > 0 and result["data"][0].get("test") == 1:
-            health_info = {
-                "status": "healthy",
-                "database": "connected",
-                "host": Config.MYSQL_HOST,
-                "port": Config.MYSQL_PORT,
-                "database_name": Config.MYSQL_DATABASE,
-                "php_bridge_enabled": Config.USE_PHP_BRIDGE,
-                "php_bridge_url": Config.PHP_BRIDGE_URL if Config.USE_PHP_BRIDGE else None
-            }
+        elif result.get("data") and len(result["data"]) > 0:
+            # PHP bridge returns strings, so check for both "1" and 1
+            test_value = result["data"][0].get("test")
+            if test_value == 1 or test_value == "1":
+                health_info = {
+                    "status": "healthy",
+                    "database": "connected",
+                    "host": Config.MYSQL_HOST,
+                    "port": Config.MYSQL_PORT,
+                    "database_name": Config.MYSQL_DATABASE,
+                    "php_bridge_enabled": Config.USE_PHP_BRIDGE,
+                    "php_bridge_url": Config.PHP_BRIDGE_URL if Config.USE_PHP_BRIDGE else None
+                }
+            else:
+                health_info = {
+                    "status": "unhealthy",
+                    "database": "disconnected",
+                    "error": f"Test query failed - unexpected value: {test_value}",
+                    "result": result,
+                    "php_bridge_enabled": Config.USE_PHP_BRIDGE,
+                    "php_bridge_url": Config.PHP_BRIDGE_URL if Config.USE_PHP_BRIDGE else None
+                }
         else:
             health_info = {
                 "status": "unhealthy",
