@@ -3,7 +3,7 @@ services:
     name: medfellow
     env: python
     region: oregon
-    plan: free
+    plan: starter
     branch: main
     buildCommand: "./build.sh"
     startCommand: "gunicorn app:app --bind 0.0.0.0:$PORT"
