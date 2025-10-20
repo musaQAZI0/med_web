@@ -1035,20 +1035,21 @@
         document.getElementById('cancelTaskForm').addEventListener('submit', function(e) {
             e.preventDefault();
             const taskId = document.getElementById('cancelTaskId').value;
-            
+
             if (!taskId) {
                 document.getElementById('cancelStatus').innerHTML = '<div class="alert alert-warning">Please enter a task ID.</div>';
                 return;
             }
-            
+
             fetch(`/cancel-task/${taskId}`, { method: 'POST' })
-                .then(response => {
+                .then(response => response.json())
+                .then(data => {
                     const statusDiv = document.getElementById('cancelStatus');
-                    if (response.ok) {
-                        statusDiv.innerHTML = '<div class="alert alert-success">Task cancellation requested.</div>';
+                    if (data.status === 'success') {
+                        statusDiv.innerHTML = '<div class="alert alert-success">Task cancelled successfully.</div>';
                         document.getElementById('cancelTaskId').value = '';
                     } else {
-                        statusDiv.innerHTML = '<div class="alert alert-danger">Failed to cancel task.</div>';
+                        statusDiv.innerHTML = `<div class="alert alert-danger">${data.error || 'Failed to cancel task.'}</div>`;
                     }
                 })
                 .catch(error => {
