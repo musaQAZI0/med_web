@@ -19,9 +19,9 @@ class Config:
     MYSQL_DATABASE = os.environ.get('MYSQL_DATABASE', 'railway')
     
     # Cloudinary Config
-    CLOUDINARY_CLOUD_NAME = os.environ.get('CLOUDINARY_CLOUD_NAME', 'dgxolaza9')
-    CLOUDINARY_API_KEY = os.environ.get('CLOUDINARY_API_KEY', '163384472599539')
-    CLOUDINARY_API_SECRET = os.environ.get('CLOUDINARY_API_SECRET', 'V6r9rqUvsenV9VBM1SBKEZep2sM')
+    CLOUDINARY_CLOUD_NAME = "dgxolaza9"
+    CLOUDINARY_API_KEY = "163384472599539"
+    CLOUDINARY_API_SECRET = "V6r9rqUvsenV9VBM1SBKEZep2sM"
     
     # --- HARDCODED CATEGORIES ---
     CATEGORIES = [

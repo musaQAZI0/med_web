@@ -32,66 +32,26 @@ def health():
     """
     health_info = {}
     tables_info = {}
-
+    
     # --- Check Database Connection ---
     try:
         test_query = "SELECT 1 as test"
         result = database.execute_query(test_query)
-
-        # Add debug info
-        health_info["php_bridge_enabled"] = Config.USE_PHP_BRIDGE
-        health_info["php_bridge_url"] = Config.PHP_BRIDGE_URL if Config.USE_PHP_BRIDGE else None
-
-        if result.get("error"):
+        if result.get("data") and result["data"][0]["test"] == 1:
             health_info = {
-                "status": "unhealthy",
-                "database": "disconnected",
-                "error": result.get("error"),
-                "php_bridge_enabled": Config.USE_PHP_BRIDGE,
-                "php_bridge_url": Config.PHP_BRIDGE_URL if Config.USE_PHP_BRIDGE else None
+                "status": "healthy",
+                "database": "connected",
+                "host": Config.MYSQL_HOST,
+                "port": Config.MYSQL_PORT,
+                "database_name": Config.MYSQL_DATABASE
             }
-        elif result.get("data") and len(result["data"]) > 0:
-            # PHP bridge returns strings, so check for both "1" and 1
-            test_value = result["data"][0].get("test")
-            if test_value == 1 or test_value == "1":
-                health_info = {
-                    "status": "healthy",
-                    "database": "connected",
-                    "host": Config.MYSQL_HOST,
-                    "port": Config.MYSQL_PORT,
-                    "database_name": Config.MYSQL_DATABASE,
-                    "php_bridge_enabled": Config.USE_PHP_BRIDGE,
-                    "php_bridge_url": Config.PHP_BRIDGE_URL if Config.USE_PHP_BRIDGE else None
-                }
-            else:
-                health_info = {
-                    "status": "unhealthy",
-                    "database": "disconnected",
-                    "error": f"Test query failed - unexpected value: {test_value}",
-                    "result": result,
-                    "php_bridge_enabled": Config.USE_PHP_BRIDGE,
-                    "php_bridge_url": Config.PHP_BRIDGE_URL if Config.USE_PHP_BRIDGE else None
-                }
         else:
-            health_info = {
-                "status": "unhealthy",
-                "database": "disconnected",
-                "error": "Test query failed - unexpected response format",
-                "result": result,
-                "php_bridge_enabled": Config.USE_PHP_BRIDGE,
-                "php_bridge_url": Config.PHP_BRIDGE_URL if Config.USE_PHP_BRIDGE else None
-            }
+            health_info = {"status": "unhealthy", "database": "disconnected", "error": "Test query failed"}
     except Exception as e:
-        health_info = {
-            "status": "unhealthy",
-            "database": "error",
-            "error": str(e),
-            "php_bridge_enabled": Config.USE_PHP_BRIDGE,
-            "php_bridge_url": Config.PHP_BRIDGE_URL if Config.USE_PHP_BRIDGE else None
-        }
+        health_info = {"status": "unhealthy", "database": "error", "error": str(e)}
 
     response_data = {**health_info}
-
+    
     status_code = 200 if health_info.get("status") == "healthy" else 500
     return jsonify(response_data), status_code
 
@@ -420,9 +380,9 @@ def task_status_check(task_id):
 def cancel_task(task_id):
     success = tasks.cancel_task(task_id)
     if success:
-        return jsonify({"status": "success", "message": "Task cancelled successfully"}), 200
+        return '', 200
     else:
-        return jsonify({"status": "error", "error": "Task not found or could not be cancelled"}), 404
+        return jsonify({"error": "Task not found or could not be cancelled"}), 404
 
 # --- MCQ Generation Endpoints ---
 
@@ -542,5 +502,4 @@ def clear_completed_tasks():
         }), 500
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    app.run(debug=False, host='0.0.0.0', port=port)
+    app.run(debug=True, host='0.0.0.0', port=5000)
