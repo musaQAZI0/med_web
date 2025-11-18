@@ -3,12 +3,16 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 import uuid
 import os
+import logging
 from . import q_generation_func
 from . import func_gpt5 as board_explainer
 from .database import execute_query
 import cloudinary
 import cloudinary.uploader
 from config import Config
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 #Tasks Infringment
 import json
@@ -218,9 +222,12 @@ def process_single_question_explanation(task_id, question_id):
         # Update database
         update_query = "UPDATE tblquestion SET description = %s WHERE questionId = %s"
         response = execute_query(update_query, (explanation, question_id))
-        
+
         if response.get("error"):
-            raise Exception("Database update failed")
+            raise Exception(f"Database update failed: {response.get('error')}")
+
+        # Log successful update
+        print(f"Successfully updated question {question_id} in database")
         
         # Prepare result
         labeled_opts = [opt['questionImageText'] for opt in options]
@@ -417,15 +424,20 @@ def process_question_explanation(task_id, category_id, subject_name, topic_name,
                     print(f"Completed question {result['questionId']} ({task_status[task_id]['progress']}/{task_status[task_id]['total']})")
                     
                 except Exception as e:
+                    error_msg = str(e)
                     error_result = {
                         "index": idx,
                         "questionId": q["questionId"],
-                        "error": str(e)
+                        "error": error_msg
                     }
                     with status_lock:
                         task_status[task_id]["results"].append(error_result)
                         task_status[task_id]["progress"] = len(task_status[task_id]["results"])
-                    print(f"Error processing question {q.get('questionId', 'unknown')}: {str(e)}")
+                    print(f"❌ Error processing question {q.get('questionId', 'unknown')}: {error_msg}")
+
+                    # Log database-specific errors prominently
+                    if "DB update failed" in error_msg or "Database update failed" in error_msg:
+                        logger.error(f"DATABASE UPDATE FAILED for question {q.get('questionId', 'unknown')}: {error_msg}")
         
         # Mark as completed
         with status_lock:
@@ -504,7 +516,10 @@ def process_single_question(task_id, idx, q, options):
         response = execute_query(update_query, (explanation, int(q['questionId'])))
 
         if response.get("error"):
-            raise Exception("DB update failed")
+            raise Exception(f"DB update failed: {response.get('error')}")
+
+        # Log successful update
+        print(f"Successfully updated question {q['questionId']} in database")
 
         result = {
             "index": idx,

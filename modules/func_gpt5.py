@@ -1,57 +1,28 @@
 import os
 import json
 from openai import OpenAI
-from typing import Dict, List
+from typing import Dict, List, Optional
+import time
 import re
 
-
-# Model Configuration
-GLOBAL_MODEL = 'gpt-5'
-GPT_MINI_MODEL = 'gpt-4o-mini'
-GPT_STANDARD_MODEL = 'gpt-4o'
-GPT_SEARCH_MODEL = 'gpt-4o-search-preview-2025-03-11'
-
-# Token Limits
-MAX_PARSE_TOKENS = 1500
-MAX_KEYWORD_TOKENS = 1000
-MAX_RESEARCH_TOKENS = 16384
-MAX_EXPLANATION_TOKENS = 15000
-MAX_KEYWORDS = 8
 
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-
 class GenericBoardStyleMedicalExplainer:
     """Generates comprehensive explanations for medical board exam questions using GPT-5."""
     
-    def __init__(self, model: str = GLOBAL_MODEL, max_cache_size: int = 100):
-        """
-        Initialize the explainer.
-        
-        Args:
-            model: The GPT model to use for explanation generation
-            max_cache_size: Maximum number of research results to cache
-        """
+    def __init__(self):
         self.research_cache = {}
-        self.max_cache_size = max_cache_size
-        self.model = model
+        
+        self.model = GLOBAL_MODEL
         
         print(f"🚀 Initialized with {self.model}")
     
     def _extract_response_text(self, response) -> str:
         """
-        Extract text from GPT response object.
-        Handles both legacy chat completions and new Responses API structure.
-        
-        Args:
-            response: OpenAI API response object
-            
-        Returns:
-            Extracted text content
-            
-        Raises:
-            Exception: If response is incomplete or text cannot be extracted
+        Extract text from GPT-5 response object.
+        Handles the new Responses API structure where content is nested.
         """
         # Check if response is incomplete
         if hasattr(response, 'status') and response.status == 'incomplete':
@@ -62,7 +33,7 @@ class GenericBoardStyleMedicalExplainer:
         if hasattr(response, 'output_text') and response.output_text:
             return response.output_text
         
-        # Extract from output array (new Responses API structure)
+        # Extract from output array (new structure)
         if hasattr(response, 'output') and response.output:
             output_text = ""
             
@@ -84,24 +55,17 @@ class GenericBoardStyleMedicalExplainer:
             if output_text:
                 return output_text
         
-        # Fallback for legacy chat completions format
+        # Fallback for legacy format
         if hasattr(response, 'choices') and response.choices:
-            if hasattr(response.choices[0], 'message') and hasattr(response.choices[0].message, 'content'):
-                return response.choices[0].message.content
+            return response.choices[0].message.content
         
-        raise Exception("Could not extract text from response. Unknown response format.")
+        raise Exception("Could not extract text from response")
         
     def parse_question(self, question_text: str) -> Dict:
         """
-        Parse any medical board question to extract key components using GPT.
-        
-        Args:
-            question_text: The full question text
-            
-        Returns:
-            Dictionary with parsed components: main_topic, options, answer_choices, correct_answer
+        Parse any medical board question to extract key components using GPT-5
         """
-        print(f"📋 Parsing medical board question with {GPT_MINI_MODEL}...")
+        print(f"📋 Parsing medical board question with {self.model}...")
         
         parse_prompt = f"""Extract the key components from this medical board question:
 
@@ -125,20 +89,21 @@ Return ONLY valid JSON, no additional text."""
 
         try:
             response = client.chat.completions.create(
-                model=GPT_MINI_MODEL,
+                model='gpt-4o-mini',
                 messages=[
                     {"role": "system", "content": "You are a medical question parser. Extract components and return ONLY valid JSON."},
                     {"role": "user", "content": parse_prompt}
                 ],
-                max_tokens=MAX_PARSE_TOKENS
+                max_tokens=1500
             )
             
+            # Extract text with comprehensive fallbacks
             result = self._extract_response_text(response).strip()
             
             # Remove markdown code blocks if present
             if result.startswith("```"):
                 result = re.sub(r'^```(?:json)?\n?', '', result)
-                result = re.sub(r'\n?```$', '', result)
+                result = re.sub(r'\n?```', '', result)
             
             parsed = json.loads(result)
             
@@ -149,74 +114,51 @@ Return ONLY valid JSON, no additional text."""
             return parsed
             
         except Exception as e:
-            print(f"❌ GPT parsing failed: {e}")
+            print(f"❌ GPT-5 parsing failed: {e}")
             print("   Falling back to regex parsing...")
             
-            return self._fallback_parse(question_text)
-    
-    def _fallback_parse(self, question_text: str) -> Dict:
-        """
-        Fallback regex-based parsing when GPT parsing fails.
-        
-        Args:
-            question_text: The full question text
+            # Fallback to basic regex parsing
+            lines = question_text.strip().split('\n')
+            main_topic = ""
+            options = []
+            answer_choices = []
+            correct_answer = ""
             
-        Returns:
-            Dictionary with parsed components
-        """
-        lines = question_text.strip().split('\n')
-        main_topic = ""
-        options = []
-        answer_choices = []
-        correct_answer = ""
-        
-        current_section = "topic"
-        topic_lines = []
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                continue
-                
-            # Detect numbered options (1), 2), etc.)
-            if re.match(r'^\d+\)', line):
-                current_section = "options"
-                options.append(line)
-            # Detect lettered choices (A., B., etc.)
-            elif re.match(r'^[A-E]\.', line):
-                current_section = "choices"
-                answer_choices.append(line)
-            # Detect answer line
-            elif any(phrase in line.lower() for phrase in ["prawidłowa odpowiedź", "correct answer", "answer:", "odpowiedź:"]):
-                current_section = "answer"
-                match = re.search(r'[A-E]', line)
-                correct_answer = match.group(0) if match else line
-            elif current_section == "topic":
-                topic_lines.append(line)
-        
-        main_topic = " ".join(topic_lines).strip().rstrip(':?').strip()
-        
-        # Fallback to first line if no topic found
-        if not main_topic and lines:
-            main_topic = lines[0].strip()
-        
-        return {
-            "main_topic": main_topic,
-            "options": options,
-            "answer_choices": answer_choices,
-            "correct_answer": correct_answer
-        }
+            current_section = "topic"
+            topic_lines = []
+            
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                    
+                if re.match(r'^\d+\)', line):
+                    current_section = "options"
+                    options.append(line)
+                elif re.match(r'^[A-E]\.', line):
+                    current_section = "choices"
+                    answer_choices.append(line)
+                elif any(phrase in line.lower() for phrase in ["prawidłowa odpowiedź", "correct answer", "answer:", "odpowiedź:"]):
+                    current_section = "answer"
+                    match = re.search(r'[A-E]', line)
+                    correct_answer = match.group(0) if match else line
+                elif current_section == "topic":
+                    topic_lines.append(line)
+            
+            main_topic = " ".join(topic_lines).strip().rstrip(':?').strip()
+            
+            if not main_topic and lines:
+                main_topic = lines[0].strip()
+            
+            return {
+                "main_topic": main_topic,
+                "options": options,
+                "answer_choices": answer_choices,
+                "correct_answer": correct_answer
+            }
 
     def extract_keywords(self, question_data: Dict) -> List[str]:
-        """
-        Extract medical keywords for targeted research using GPT.
-        
-        Args:
-            question_data: Parsed question dictionary
-            
-        Returns:
-            List of medical keywords (max MAX_KEYWORDS items)
-        """
+        """Extract medical keywords for targeted research using GPT-5."""
         print("🔍 Extracting keywords...")
         
         prompt = f"""Extract 4-6 precise medical search terms from this question:
@@ -235,34 +177,25 @@ Format: term1, term2, term3"""
 
         try:
             response = client.chat.completions.create(
-                model=GPT_STANDARD_MODEL,
+                model='gpt-4o',
                 messages=[
                     {"role": "system", "content": "You are a medical librarian. Extract precise search terms only."},
                     {"role": "user", "content": prompt}
                 ],
-                max_tokens=MAX_KEYWORD_TOKENS
+                max_tokens=1000
             )
             
             result = self._extract_response_text(response)
-            keywords = [k.strip() for k in result.split(',') if k.strip()]
+            keywords = [k.strip() for k in result.split(',')]
             print(f"✅ Extracted {len(keywords)} keywords")
-            return keywords[:MAX_KEYWORDS]
+            return keywords[:8]
             
         except Exception as e:
             print(f"❌ Keyword extraction error: {e}")
             return ["general medical condition"]
 
     def research_topic(self, question_data: Dict, keywords: List[str]) -> str:
-        """
-        Conduct targeted medical research using web search with caching.
-        
-        Args:
-            question_data: Parsed question dictionary
-            keywords: List of search keywords
-            
-        Returns:
-            Research results string
-        """
+        """Conduct targeted medical research using web search with caching."""
         # Create cache key from topic and sorted keywords
         cache_key = (question_data['main_topic'], tuple(sorted(keywords)))
         
@@ -270,12 +203,12 @@ Format: term1, term2, term3"""
             print("✅ Using cached research")
             return self.research_cache[cache_key]
         
-        print("🎯 Conducting research with GPT search model...")
+        print("🎯 Conducting research with GPT-5...")
         
         search_focus = f"""Research this medical question. Find 1-2 authoritative sources:
 
 QUESTION: {question_data['main_topic']}
-KEY TERMS: {', '.join(keywords[:6])}
+KEY TERMS: {', '.join(keywords[:])}
 
 Find:
 1. Primary clinical guideline (WHO/medical society)
@@ -288,7 +221,7 @@ For each source provide:
 
         try:
             response = client.chat.completions.create(
-                model=GPT_SEARCH_MODEL,
+                model='gpt-4o-search-preview-2025-03-11',
                 messages=[{
                     "role": "system",
                     "content": "You are a medical research specialist who finds ACTUAL medical sources and working URLs. Always return complete web addresses starting with https://. Focus on official guidelines and authoritative medical literature. Summarize the findings, and then return as output."
@@ -296,17 +229,10 @@ For each source provide:
                     "role": "user",
                     "content": search_focus
                 }],
-                max_tokens=MAX_RESEARCH_TOKENS
+                max_tokens=16384
             )
             
             results = self._extract_response_text(response)
-            
-            # Manage cache size
-            if len(self.research_cache) >= self.max_cache_size:
-                # Remove oldest entry (FIFO)
-                oldest_key = next(iter(self.research_cache))
-                del self.research_cache[oldest_key]
-                print(f"🗑️ Removed oldest cache entry (cache size: {self.max_cache_size})")
             
             # Cache the results
             self.research_cache[cache_key] = results
@@ -319,20 +245,8 @@ For each source provide:
             return f"Research unavailable: {str(e)}"
 
     def generate_board_explanation(self, question_text: str, cancellation_check=None) -> str:
-        """
-        Generate comprehensive board-style explanation directly in Polish using GPT-5.
-        
-        Args:
-            question_text: The full question text
-            cancellation_check: Optional callable that returns True if generation should be cancelled
-            
-        Returns:
-            Generated explanation in Markdown format
-            
-        Raises:
-            Exception: If generation fails or is cancelled
-        """
-        print(f"🎯 Generating explanation with {self.model}...")
+        """Generate comprehensive board-style explanation directly in Polish using GPT-5."""
+        print("🎯 Generating explanation with GPT-5...")
         
         # Validate input
         if not question_text or len(question_text.strip()) < 10:
@@ -353,19 +267,25 @@ For each source provide:
         print(f"✓ Found {len(question_data['options'])} options")
         
         if cancellation_check and cancellation_check():
-            raise Exception("Generation cancelled by user")
+            raise Exception("Cancelled")
         
         # Extract keywords
         keywords = self.extract_keywords(question_data)
-        
+        time.sleep(0.5)
         if cancellation_check and cancellation_check():
-            raise Exception("Generation cancelled by user")
+            raise Exception("Cancelled")
         
         # Research (with caching)
         research = self.research_topic(question_data, keywords)
-        
+        time.sleep(0.5)
         if cancellation_check and cancellation_check():
-            raise Exception("Generation cancelled by user")
+            raise Exception("Cancelled")
+        
+        # Summarize research
+        #research_summary = self.summarize_research(research)
+        #time.sleep(0.5)
+        #if cancellation_check and cancellation_check():
+        #    raise Exception("Cancelled")
         
         explanation_prompt = f"""Stwórz kompletne wyjaśnienie egzaminacyjne po polsku:
 
@@ -452,42 +372,36 @@ Podaj maksymalnie **3–4 autorytatywne źródła**, np.:
 * Całość powinna mieć **około 400–500 słów**.
 * Nie dodawaj nieistniejących źródeł ani fikcyjnych danych.
 
+
+
 ---
 
 ✅ **Cel:** uzyskać precyzyjne, spójne i klinicznie wiarygodne wyjaśnienie poprawnej odpowiedzi do pytania medycznego w formacie Markdown, bez niejasnych skrótów i powtórzeń.
+
 """
 
         try:
             response = client.responses.create(
-                model=self.model,
+                model='gpt-5',
                 input=[
                     {"role": "system", "content": "Jesteś ekspertem medycznym specjalizującym się w przygotowaniu do egzaminów. Twórz jasne wyjaśnienia oparte na dowodach z właściwymi cytowaniami. Odpowiedzi formatuj w **Markdown** (nagłówki, listy punktowane, pogrubienia, kursywa). Nie dodawaj nic dodatkowego na początku ani na końcu. Używaj emoji medycznych naturalnie w całym tekście. Wyróżniaj **ważne tematy, nagłówki, definicje, słowa kluczowe i istotne terminy** za pomocą *kursywy* lub innych formatów **Markdown**."},
                     {"role": "user", "content": explanation_prompt}
                 ],
                 reasoning={"effort": "high"},
                 text={"verbosity": "medium"},
-                max_output_tokens=MAX_EXPLANATION_TOKENS
+                max_output_tokens=15000
             )
-            
+
+            # Check for cancellation immediately after API call completes
+            if cancellation_check and cancellation_check():
+                raise Exception("Cancelled after explanation API call")
+
             explanation = self._extract_response_text(response)
-            print(f"✅ Explanation generated successfully ({len(explanation)} characters)")
+            print("✅ Explanation generated directly in Polish with GPT-5")
             return explanation
             
         except Exception as e:
             print(f"❌ Generation error: {e}")
             import traceback
             traceback.print_exc()
-            raise Exception(f"Failed to generate explanation: {str(e)}")
-    
-    def clear_cache(self):
-        """Clear the research cache."""
-        self.research_cache.clear()
-        print("🗑️ Research cache cleared")
-    
-    def get_cache_info(self) -> Dict:
-        """Get information about the current cache state."""
-        return {
-            "size": len(self.research_cache),
-            "max_size": self.max_cache_size,
-            "keys": list(self.research_cache.keys())
-        }
+            return f"Error: {str(e)}"

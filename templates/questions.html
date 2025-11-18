@@ -1158,14 +1158,20 @@
                         }
                         
                         const progress = data.progress || 'Processing...';
+                        const isCancelling = data.status === 'cancelling';
+                        const alertClass = isCancelling ? 'alert-warning' : 'alert-info';
+                        const statusMessage = isCancelling
+                            ? 'Cancelling... (will stop after current operation completes)'
+                            : `Task status: ${data.status} (Progress: ${progress} questions)`;
+
                         statusContainer.innerHTML = `
-                            <div class="alert alert-info">
+                            <div class="alert ${alertClass}">
                                 <div class="d-flex align-items-center">
                                     <div class="spinner-border spinner-border-sm me-2" role="status">
                                         <span class="visually-hidden">Loading...</span>
                                     </div>
                                     <div>
-                                        <div>Task status: ${data.status} (Progress: ${progress} questions)</div>
+                                        <div>${statusMessage}</div>
                                         <small class="text-muted">Task ID: ${taskId}</small>
                                     </div>
                                 </div>
@@ -1507,7 +1513,7 @@
                 const task = this.tasks[taskId];
                 if (this.currentFilter === 'all') return true;
                 if (this.currentFilter === 'processing') {
-                    return task.status === 'processing' || task.status === 'queued';
+                    return task.status === 'processing' || task.status === 'queued' || task.status === 'cancelling';
                 }
                 return task.status === this.currentFilter;
             });
@@ -1540,10 +1546,11 @@
                 'completed': 'success',
                 'failed': 'danger',
                 'cancelled': 'warning',
+                'cancelling': 'warning',
                 'processing': 'info',
                 'queued': 'secondary'
             };
-            
+
             const statusColor = statusColors[task.status] || 'secondary';
             const progressPercent = task.total > 0 ? Math.round((task.progress / task.total) * 100) : 0;
             
@@ -1599,19 +1606,19 @@
                                 </div>
                             ` : ''}
                             
-                            ${task.status === 'processing' || task.status === 'queued' ? `
+                            ${task.status === 'processing' || task.status === 'queued' || task.status === 'cancelling' ? `
                                 <div class="mb-2">
                                     <div class="progress">
-                                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                                             role="progressbar" 
-                                             style="width: ${progressPercent}%" 
-                                             aria-valuenow="${task.progress}" 
-                                             aria-valuemin="0" 
+                                        <div class="progress-bar progress-bar-striped progress-bar-animated ${task.status === 'cancelling' ? 'bg-warning' : ''}"
+                                             role="progressbar"
+                                             style="width: ${progressPercent}%"
+                                             aria-valuenow="${task.progress}"
+                                             aria-valuemin="0"
                                              aria-valuemax="${task.total}">
                                             ${task.progress}/${task.total}
                                         </div>
                                     </div>
-                                    <small class="text-muted">${progressPercent}% complete</small>
+                                    <small class="text-muted">${progressPercent}% complete${task.status === 'cancelling' ? ' (cancelling...)' : ''}</small>
                                 </div>
                             ` : ''}
                             
@@ -1633,9 +1640,14 @@
                                 <button class="btn btn-outline-primary" onclick="viewTaskDetails('${taskId}')">
                                     <i class="bi bi-eye"></i> View
                                 </button>
-                                ${task.is_running ? `
+                                ${task.is_running && task.status !== 'cancelling' ? `
                                     <button class="btn btn-outline-danger" onclick="cancelTaskById('${taskId}')">
                                         <i class="bi bi-stop-circle"></i> Cancel
+                                    </button>
+                                ` : ''}
+                                ${task.status === 'cancelling' ? `
+                                    <button class="btn btn-outline-warning" disabled>
+                                        <i class="bi bi-hourglass-split"></i> Cancelling...
                                     </button>
                                 ` : ''}
                             </div>
@@ -1656,7 +1668,7 @@
             
             Object.values(this.tasks).forEach(task => {
                 counts.all++;
-                if (task.status === 'processing' || task.status === 'queued') {
+                if (task.status === 'processing' || task.status === 'queued' || task.status === 'cancelling') {
                     counts.processing++;
                 } else if (task.status === 'completed') {
                     counts.completed++;
@@ -1747,15 +1759,15 @@
         if (!confirm('Cancel this task?')) {
             return;
         }
-        
+
         fetch(`/cancel-task/${taskId}`, { method: 'POST' })
             .then(response => response.json())
             .then(data => {
                 if (data.status === 'success') {
-                    alert('Task cancelled');
+                    alert('Task cancelled successfully');
                     taskHistory.loadAllTasks();
                 } else {
-                    alert('Error cancelling task');
+                    alert('Error: ' + (data.error || 'Failed to cancel task'));
                 }
             })
             .catch(error => {

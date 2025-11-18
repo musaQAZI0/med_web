@@ -380,9 +380,9 @@ def task_status_check(task_id):
 def cancel_task(task_id):
     success = tasks.cancel_task(task_id)
     if success:
-        return '', 200
+        return jsonify({"status": "success", "message": "Task cancelled"}), 200
     else:
-        return jsonify({"error": "Task not found or could not be cancelled"}), 404
+        return jsonify({"status": "error", "error": "Task not found or could not be cancelled"}), 404
 
 # --- MCQ Generation Endpoints ---
 
