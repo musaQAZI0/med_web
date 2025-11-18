@@ -9,6 +9,9 @@ logger = logging.getLogger(__name__)
 
 def get_db_connection():
     """Create a new database connection (used only when PHP bridge is disabled)."""
+    if Config.USE_PHP_BRIDGE:
+        raise Exception("Direct database connection attempted while USE_PHP_BRIDGE=True. Use PHP bridge instead.")
+
     try:
         connection = pymysql.connect(
             host=Config.MYSQL_HOST,
@@ -19,7 +22,7 @@ def get_db_connection():
             charset='utf8mb4',
             cursorclass=pymysql.cursors.DictCursor
         )
-        print("Database connected!!")
+        logger.info("Database connected directly!")
         return connection
     except Exception as e:
         logger.error(f"Error connecting to database: {e}")

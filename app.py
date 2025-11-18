@@ -28,32 +28,43 @@ def mcq_generation():
 @app.route('/health', methods=['GET'])
 def health():
     """
-    Enhanced health check that also lists database tables.
+    Health check endpoint - tests database connectivity via PHP bridge or direct connection.
     """
-    health_info = {}
-    tables_info = {}
-    
+    health_info = {
+        "status": "checking",
+        "connection_method": "PHP Bridge" if Config.USE_PHP_BRIDGE else "Direct MySQL",
+        "php_bridge_url": Config.PHP_BRIDGE_URL if Config.USE_PHP_BRIDGE else None
+    }
+
     # --- Check Database Connection ---
     try:
         test_query = "SELECT 1 as test"
         result = database.execute_query(test_query)
-        if result.get("data") and result["data"][0]["test"] == 1:
-            health_info = {
-                "status": "healthy",
-                "database": "connected",
-                "host": Config.MYSQL_HOST,
-                "port": Config.MYSQL_PORT,
-                "database_name": Config.MYSQL_DATABASE
-            }
-        else:
-            health_info = {"status": "unhealthy", "database": "disconnected", "error": "Test query failed"}
-    except Exception as e:
-        health_info = {"status": "unhealthy", "database": "error", "error": str(e)}
 
-    response_data = {**health_info}
-    
+        if result.get("error"):
+            health_info["status"] = "unhealthy"
+            health_info["database"] = "error"
+            health_info["error"] = result.get("error")
+        elif result.get("data") and len(result["data"]) > 0 and result["data"][0].get("test") == 1:
+            health_info["status"] = "healthy"
+            health_info["database"] = "connected"
+            if not Config.USE_PHP_BRIDGE:
+                health_info["host"] = Config.MYSQL_HOST
+                health_info["port"] = Config.MYSQL_PORT
+                health_info["database_name"] = Config.MYSQL_DATABASE
+        else:
+            health_info["status"] = "unhealthy"
+            health_info["database"] = "disconnected"
+            health_info["error"] = "Test query returned unexpected result"
+            health_info["result"] = result
+    except Exception as e:
+        health_info["status"] = "unhealthy"
+        health_info["database"] = "error"
+        health_info["error"] = str(e)
+        health_info["error_type"] = type(e).__name__
+
     status_code = 200 if health_info.get("status") == "healthy" else 500
-    return jsonify(response_data), status_code
+    return jsonify(health_info), status_code
 
 
 @app.route('/fetch-categories', methods=['GET'])
