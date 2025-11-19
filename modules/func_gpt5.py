@@ -9,6 +9,9 @@ import re
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
+# Define the global model to use
+GLOBAL_MODEL = "gpt-5"
+
 class GenericBoardStyleMedicalExplainer:
     """Generates comprehensive explanations for medical board exam questions using GPT-5."""
     
