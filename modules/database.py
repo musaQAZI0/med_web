@@ -9,9 +9,6 @@ logger = logging.getLogger(__name__)
 
 def get_db_connection():
     """Create a new database connection (used only when PHP bridge is disabled)."""
-    if Config.USE_PHP_BRIDGE:
-        raise Exception("Direct database connection attempted while USE_PHP_BRIDGE=True. Use PHP bridge instead.")
-
     try:
         connection = pymysql.connect(
             host=Config.MYSQL_HOST,
@@ -22,7 +19,7 @@ def get_db_connection():
             charset='utf8mb4',
             cursorclass=pymysql.cursors.DictCursor
         )
-        logger.info("Database connected directly!")
+        print("Database connected!!")
         return connection
     except Exception as e:
         logger.error(f"Error connecting to database: {e}")
@@ -71,29 +68,15 @@ def execute_query_via_php_bridge(query, params=None):
             logger.error(f"PHP bridge returned error: {result['error']}")
             return {"error": result["error"]}
 
-        # Check if this is an UPDATE/INSERT/DELETE query (non-SELECT)
-        query_type = query.strip().upper().split()[0]
-        is_modification_query = query_type in ['UPDATE', 'INSERT', 'DELETE']
-
         # Handle response format: {"status": "success", "data": [...]}
         # or just {"data": [...]}
         if "status" in result and result["status"] == "success":
-            if is_modification_query:
-                # For UPDATE/INSERT/DELETE, return success with affected rows if available
-                logger.info(f"PHP bridge {query_type} query successful")
-                return {"affected_rows": result.get("affected_rows", result.get("rows_affected", 0)), "success": True}
-            else:
-                # For SELECT queries
-                logger.info(f"PHP bridge query successful, returned {len(result.get('data', []))} rows")
-                return {"data": result.get("data", [])}
+            logger.info(f"PHP bridge query successful, returned {len(result.get('data', []))} rows")
+            return {"data": result.get("data", [])}
         elif "data" in result:
             logger.info(f"PHP bridge query successful, returned {len(result.get('data', []))} rows")
             return result
         else:
-            # If no error and no data, assume success for modification queries
-            if is_modification_query:
-                logger.info(f"PHP bridge {query_type} query completed")
-                return {"affected_rows": result.get("affected_rows", result.get("rows_affected", 0)), "success": True}
             logger.error(f"Unexpected PHP bridge response format: {result}")
             return {"error": "Unexpected response format from PHP bridge"}
 

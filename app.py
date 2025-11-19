@@ -28,43 +28,32 @@ def mcq_generation():
 @app.route('/health', methods=['GET'])
 def health():
     """
-    Health check endpoint - tests database connectivity via PHP bridge or direct connection.
+    Enhanced health check that also lists database tables.
     """
-    health_info = {
-        "status": "checking",
-        "connection_method": "PHP Bridge" if Config.USE_PHP_BRIDGE else "Direct MySQL",
-        "php_bridge_url": Config.PHP_BRIDGE_URL if Config.USE_PHP_BRIDGE else None
-    }
-
+    health_info = {}
+    tables_info = {}
+    
     # --- Check Database Connection ---
     try:
         test_query = "SELECT 1 as test"
         result = database.execute_query(test_query)
-
-        if result.get("error"):
-            health_info["status"] = "unhealthy"
-            health_info["database"] = "error"
-            health_info["error"] = result.get("error")
-        elif result.get("data") and len(result["data"]) > 0 and result["data"][0].get("test") == 1:
-            health_info["status"] = "healthy"
-            health_info["database"] = "connected"
-            if not Config.USE_PHP_BRIDGE:
-                health_info["host"] = Config.MYSQL_HOST
-                health_info["port"] = Config.MYSQL_PORT
-                health_info["database_name"] = Config.MYSQL_DATABASE
+        if result.get("data") and result["data"][0]["test"] == 1:
+            health_info = {
+                "status": "healthy",
+                "database": "connected",
+                "host": Config.MYSQL_HOST,
+                "port": Config.MYSQL_PORT,
+                "database_name": Config.MYSQL_DATABASE
+            }
         else:
-            health_info["status"] = "unhealthy"
-            health_info["database"] = "disconnected"
-            health_info["error"] = "Test query returned unexpected result"
-            health_info["result"] = result
+            health_info = {"status": "unhealthy", "database": "disconnected", "error": "Test query failed"}
     except Exception as e:
-        health_info["status"] = "unhealthy"
-        health_info["database"] = "error"
-        health_info["error"] = str(e)
-        health_info["error_type"] = type(e).__name__
+        health_info = {"status": "unhealthy", "database": "error", "error": str(e)}
 
+    response_data = {**health_info}
+    
     status_code = 200 if health_info.get("status") == "healthy" else 500
-    return jsonify(health_info), status_code
+    return jsonify(response_data), status_code
 
 
 @app.route('/fetch-categories', methods=['GET'])
@@ -273,9 +262,25 @@ def generate_category_questions():
         data = request.get_json()
         category_id = int(data.get("categoryId"))
         subject_name = data.get("subjectName")
-        topic_name = data.get("topicName")
+        overwrite_existing = data.get("overwriteExisting", False)
 
-        task_id = tasks.start_explanation_task(category_id, subject_name, topic_name, generate_all=False)
+        # Support both single topic (topicName) and multiple topics (topicNames)
+        topic_names = data.get("topicNames")
+        if not topic_names:
+            # Backward compatibility: if topicNames not provided, check for single topicName
+            topic_name = data.get("topicName")
+            if topic_name:
+                topic_names = [topic_name]
+            else:
+                return jsonify({"status": "error", "error": "Missing topicNames or topicName"}), 400
+
+        task_id = tasks.start_explanation_task(
+            category_id,
+            subject_name,
+            topic_names,
+            generate_all=False,
+            overwrite_existing=overwrite_existing
+        )
         return jsonify({"status": "started", "taskId": task_id})
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
@@ -287,8 +292,9 @@ def generate_all_topic_descriptions():
         data = request.get_json()
         category_id = int(data.get("categoryId"))
         subject_name = data.get("subjectName")
+        overwrite_existing = data.get("overwriteExisting", False)
 
-        task_id = tasks.start_explanation_task(category_id, subject_name, "", generate_all=True)
+        task_id = tasks.start_explanation_task(category_id, subject_name, "", generate_all=True, overwrite_existing=overwrite_existing)
         return jsonify({"status": "started", "taskId": task_id})
     except Exception as e:
         return jsonify({"status": "error", "error": str(e)}), 500
@@ -391,7 +397,7 @@ def task_status_check(task_id):
 def cancel_task(task_id):
     success = tasks.cancel_task(task_id)
     if success:
-        return jsonify({"status": "success", "message": "Task cancelled"}), 200
+        return jsonify({"status": "success", "message": "Task cancellation initiated"}), 200
     else:
         return jsonify({"status": "error", "error": "Task not found or could not be cancelled"}), 404
 

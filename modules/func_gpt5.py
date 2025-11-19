@@ -9,9 +9,6 @@ import re
 # Initialize OpenAI client
 client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# Global model configuration
-GLOBAL_MODEL = "gpt-5"
-
 class GenericBoardStyleMedicalExplainer:
     """Generates comprehensive explanations for medical board exam questions using GPT-5."""
     
@@ -394,11 +391,7 @@ Podaj maksymalnie **3–4 autorytatywne źródła**, np.:
                 text={"verbosity": "medium"},
                 max_output_tokens=15000
             )
-
-            # Check for cancellation immediately after API call completes
-            if cancellation_check and cancellation_check():
-                raise Exception("Cancelled after explanation API call")
-
+            
             explanation = self._extract_response_text(response)
             print("✅ Explanation generated directly in Polish with GPT-5")
             return explanation

@@ -3,16 +3,12 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 import uuid
 import os
-import logging
 from . import q_generation_func
 from . import func_gpt5 as board_explainer
 from .database import execute_query
 import cloudinary
 import cloudinary.uploader
 from config import Config
-
-# Configure logging
-logger = logging.getLogger(__name__)
 
 #Tasks Infringment
 import json
@@ -121,6 +117,18 @@ def cancel_task(task_id):
         running_tasks[task_id]['cancelled'] = True
         task_status[task_id]["status"] = "cancelling"
         task_status[task_id]["error"] = "Cancellation requested by user."
+
+        # Immediately persist the status change
+        save_task_status()
+
+        # If the thread hasn't started or is already dead, mark as cancelled immediately
+        thread = running_tasks[task_id].get('thread')
+        if thread and not thread.is_alive():
+            task_status[task_id]["status"] = "cancelled"
+            task_status[task_id]["completed_at"] = time.strftime('%Y-%m-%d %H:%M:%S')
+            running_tasks.pop(task_id, None)
+            save_task_status()
+
         return True
     return False
 
@@ -199,6 +207,8 @@ def process_single_question_explanation(task_id, question_id):
         if running_tasks.get(task_id, {}).get('cancelled', False):
             task_status[task_id]["status"] = "cancelled"
             task_status[task_id]["error"] = "Task was cancelled."
+            task_status[task_id]["completed_at"] = time.strftime('%Y-%m-%d %H:%M:%S')
+            save_task_status()
             running_tasks.pop(task_id, None)
             return
         
@@ -216,18 +226,17 @@ def process_single_question_explanation(task_id, question_id):
         if running_tasks.get(task_id, {}).get('cancelled', False):
             task_status[task_id]["status"] = "cancelled"
             task_status[task_id]["error"] = "Task was cancelled after explanation generation."
+            task_status[task_id]["completed_at"] = time.strftime('%Y-%m-%d %H:%M:%S')
+            save_task_status()
             running_tasks.pop(task_id, None)
             return
         
         # Update database
         update_query = "UPDATE tblquestion SET description = %s WHERE questionId = %s"
         response = execute_query(update_query, (explanation, question_id))
-
+        
         if response.get("error"):
-            raise Exception(f"Database update failed: {response.get('error')}")
-
-        # Log successful update
-        print(f"Successfully updated question {question_id} in database")
+            raise Exception("Database update failed")
         
         # Prepare result
         labeled_opts = [opt['questionImageText'] for opt in options]
@@ -280,41 +289,53 @@ def rate_limited_delay():
             time.sleep(sleep_time)
         last_api_call_time = time.time()
         
-def start_explanation_task(category_id, subject_name, topic_name, generate_all=False, max_workers=3):
+def start_explanation_task(category_id, subject_name, topic_names, generate_all=False, overwrite_existing=False, max_workers=3):
+    """
+    Start explanation generation task.
+    topic_names can be:
+    - A list of topic names for multi-topic processing
+    - A single string (for backward compatibility)
+    - Empty string "" when generate_all=True
+    """
+    # Normalize topic_names to always be a list
+    if isinstance(topic_names, str):
+        topic_names = [topic_names] if topic_names else []
+
     task_id = str(uuid.uuid4())
     task_status[task_id] = {
-        "status": "queued", 
-        "progress": 0, 
+        "status": "queued",
+        "progress": 0,
         "total": 0,
-        "results": [], 
+        "results": [],
         "error": None,
         "started_at": time.strftime('%Y-%m-%d %H:%M:%S'),
         "task_type": "explanation_generation",
         "task_params": {
             "category_id": category_id,
             "subject_name": subject_name,
-            "topic_name": topic_name,
-            "generate_all": generate_all
+            "topic_names": topic_names,
+            "generate_all": generate_all,
+            "overwrite_existing": overwrite_existing
         }
     }
     save_task_status()
-    
+
     thread = threading.Thread(
-        target=process_question_explanation, 
-        args=(task_id, category_id, subject_name, topic_name, generate_all, max_workers)
+        target=process_question_explanation,
+        args=(task_id, category_id, subject_name, topic_names, generate_all, overwrite_existing, max_workers)
     )
     running_tasks[task_id] = {'thread': thread, 'cancelled': False}
     thread.start()
-    
+
     return task_id
 
 
-def process_question_explanation(task_id, category_id, subject_name, topic_name, generate_all, max_workers=3):
+def process_question_explanation(task_id, category_id, subject_name, topic_names, generate_all, overwrite_existing=False, max_workers=3):
     try:
         with status_lock:
             task_status[task_id]["status"] = "processing"
             save_task_status()
-        
+
         # Get subject ID
         query_subject = "SELECT id FROM subject WHERE categoryId = %s AND subjectName = %s"
         subject = execute_query(query_subject, (category_id, subject_name))
@@ -322,28 +343,64 @@ def process_question_explanation(task_id, category_id, subject_name, topic_name,
             raise Exception("Subject not found")
         subject_id = subject.get("data")[0]["id"]
 
-        # Get topic ID (if not generating for all topics)
-        topic_id = None
-        if not generate_all:
-            query_topic = "SELECT id FROM topics WHERE subjectId = %s AND topicName = %s"
-            topic = execute_query(query_topic, (subject_id, topic_name))
-            if not topic.get("data"):
-                raise Exception("Topic not found")
-            topic_id = topic.get("data")[0]["id"]
-
-        # Get question IDs
+        # Get question IDs - conditionally filter by existing descriptions
         if generate_all:
-            query_ids = """
-                SELECT DISTINCT q.questionId 
-                FROM tblquestion q
-                JOIN topicQueRel rel ON rel.questionId = q.questionId
-                JOIN topics t ON t.id = rel.topicId
-                WHERE t.subjectId = %s AND (q.description IS NULL OR TRIM(q.description) = '')
-            """
+            # Generate for ALL topics in the subject
+            if overwrite_existing:
+                # Get ALL questions for this subject
+                query_ids = """
+                    SELECT DISTINCT q.questionId
+                    FROM tblquestion q
+                    JOIN topicQueRel rel ON rel.questionId = q.questionId
+                    JOIN topics t ON t.id = rel.topicId
+                    WHERE t.subjectId = %s
+                """
+            else:
+                # Get only questions WITHOUT descriptions
+                query_ids = """
+                    SELECT DISTINCT q.questionId
+                    FROM tblquestion q
+                    JOIN topicQueRel rel ON rel.questionId = q.questionId
+                    JOIN topics t ON t.id = rel.topicId
+                    WHERE t.subjectId = %s AND (q.description IS NULL OR TRIM(q.description) = '')
+                """
             ids_resp = execute_query(query_ids, (subject_id,))
         else:
-            query_ids = "SELECT questionId FROM topicQueRel WHERE topicId = %s"
-            ids_resp = execute_query(query_ids, (topic_id,))
+            # Generate for specific topic(s)
+            # First, get topic IDs for all selected topics
+            topic_ids = []
+            for topic_name in topic_names:
+                query_topic = "SELECT id FROM topics WHERE subjectId = %s AND topicName = %s"
+                topic = execute_query(query_topic, (subject_id, topic_name))
+                if topic.get("data"):
+                    topic_ids.append(topic.get("data")[0]["id"])
+                else:
+                    print(f"Warning: Topic '{topic_name}' not found, skipping...")
+
+            if not topic_ids:
+                raise Exception("No valid topics found")
+
+            # Build query for multiple topics
+            topic_ids_placeholders = ",".join(["%s"] * len(topic_ids))
+
+            if overwrite_existing:
+                # Get ALL questions for these topics
+                query_ids = f"""
+                    SELECT DISTINCT q.questionId
+                    FROM tblquestion q
+                    JOIN topicQueRel rel ON rel.questionId = q.questionId
+                    WHERE rel.topicId IN ({topic_ids_placeholders})
+                """
+            else:
+                # Get only questions WITHOUT descriptions
+                query_ids = f"""
+                    SELECT DISTINCT q.questionId
+                    FROM tblquestion q
+                    JOIN topicQueRel rel ON rel.questionId = q.questionId
+                    WHERE rel.topicId IN ({topic_ids_placeholders})
+                    AND (q.description IS NULL OR TRIM(q.description) = '')
+                """
+            ids_resp = execute_query(query_ids, topic_ids)
             
         question_data = ids_resp.get("data", [])
         if not isinstance(question_data, list) or not question_data:
@@ -403,10 +460,12 @@ def process_question_explanation(task_id, category_id, subject_name, topic_name,
                     # Cancel all pending futures
                     for f in future_to_question:
                         f.cancel()
-                    
+
                     with status_lock:
                         task_status[task_id]["status"] = "cancelled"
                         task_status[task_id]["error"] = "Task was cancelled."
+                        task_status[task_id]["completed_at"] = time.strftime('%Y-%m-%d %H:%M:%S')
+                        save_task_status()
                     running_tasks.pop(task_id, None)
                     return
                 
@@ -424,20 +483,15 @@ def process_question_explanation(task_id, category_id, subject_name, topic_name,
                     print(f"Completed question {result['questionId']} ({task_status[task_id]['progress']}/{task_status[task_id]['total']})")
                     
                 except Exception as e:
-                    error_msg = str(e)
                     error_result = {
                         "index": idx,
                         "questionId": q["questionId"],
-                        "error": error_msg
+                        "error": str(e)
                     }
                     with status_lock:
                         task_status[task_id]["results"].append(error_result)
                         task_status[task_id]["progress"] = len(task_status[task_id]["results"])
-                    print(f"❌ Error processing question {q.get('questionId', 'unknown')}: {error_msg}")
-
-                    # Log database-specific errors prominently
-                    if "DB update failed" in error_msg or "Database update failed" in error_msg:
-                        logger.error(f"DATABASE UPDATE FAILED for question {q.get('questionId', 'unknown')}: {error_msg}")
+                    print(f"Error processing question {q.get('questionId', 'unknown')}: {str(e)}")
         
         # Mark as completed
         with status_lock:
@@ -492,9 +546,13 @@ def process_single_question(task_id, idx, q, options):
         # Check for cancellation before expensive AI operation
         if running_tasks.get(task_id, {}).get('cancelled', False):
             raise Exception("Task cancelled before explanation generation")
-        
+
         rate_limited_delay()
-        
+
+        # Check again after delay
+        if running_tasks.get(task_id, {}).get('cancelled', False):
+            raise Exception("Task cancelled after rate limit delay")
+
         # Generate explanation with cancellation support
         def check_cancellation():
             return running_tasks.get(task_id, {}).get('cancelled', False)
@@ -516,10 +574,7 @@ def process_single_question(task_id, idx, q, options):
         response = execute_query(update_query, (explanation, int(q['questionId'])))
 
         if response.get("error"):
-            raise Exception(f"DB update failed: {response.get('error')}")
-
-        # Log successful update
-        print(f"Successfully updated question {q['questionId']} in database")
+            raise Exception("DB update failed")
 
         result = {
             "index": idx,
@@ -638,6 +693,8 @@ def process_mcqs_task(task_id, pdf_path, filename):
             if running_tasks.get(task_id, {}).get('cancelled', False):
                 task_status[task_id]["status"] = "cancelled"
                 task_status[task_id]["error"] = "Task was cancelled."
+                task_status[task_id]["completed_at"] = time.strftime('%Y-%m-%d %H:%M:%S')
+                save_task_status()
                 running_tasks.pop(task_id, None)
                 return
             
