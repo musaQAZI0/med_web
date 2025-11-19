@@ -111,6 +111,53 @@ running_tasks = {}
 def get_task_status(task_id):
     return task_status.get(task_id, {"status": "not_found"})
 
+def pause_task(task_id):
+    """Pause a running task - can be resumed later"""
+    if task_id in running_tasks:
+        # Set pause flag - the task will check this periodically
+        running_tasks[task_id]['paused'] = True
+        task_status[task_id]["status"] = "pausing"
+        save_task_status()
+        return True
+    return False
+
+def resume_task(task_id):
+    """Resume a paused task from where it left off"""
+    if task_id not in task_status:
+        return False
+
+    status = task_status[task_id].get("status")
+    if status != "paused":
+        return False
+
+    # Extract original parameters
+    task_params = task_status[task_id].get("task_params", {})
+    task_type = task_status[task_id].get("task_type")
+
+    if task_type == "explanation_generation":
+        # Resume explanation task
+        category_id = task_params.get("category_id")
+        subject_name = task_params.get("subject_name")
+        topic_names = task_params.get("topic_names", [])
+        generate_all = task_params.get("generate_all", False)
+        overwrite_existing = task_params.get("overwrite_existing", False)
+
+        # Mark as resuming
+        task_status[task_id]["status"] = "resuming"
+        save_task_status()
+
+        # Start new thread to continue processing
+        thread = threading.Thread(
+            target=process_question_explanation,
+            args=(task_id, category_id, subject_name, topic_names, generate_all, overwrite_existing, 3),
+            kwargs={"resume": True}
+        )
+        running_tasks[task_id] = {'thread': thread, 'paused': False, 'cancelled': False}
+        thread.start()
+        return True
+
+    return False
+
 def cancel_task(task_id):
     if task_id in running_tasks:
         # Set cancellation flag - the task will check this periodically
@@ -330,11 +377,15 @@ def start_explanation_task(category_id, subject_name, topic_names, generate_all=
     return task_id
 
 
-def process_question_explanation(task_id, category_id, subject_name, topic_names, generate_all, overwrite_existing=False, max_workers=3):
+def process_question_explanation(task_id, category_id, subject_name, topic_names, generate_all, overwrite_existing=False, max_workers=3, resume=False):
     try:
         with status_lock:
             task_status[task_id]["status"] = "processing"
             save_task_status()
+
+        # Track processed questions for resume functionality
+        if "processed_question_ids" not in task_status[task_id]:
+            task_status[task_id]["processed_question_ids"] = []
 
         # Get subject ID
         query_subject = "SELECT id FROM subject WHERE categoryId = %s AND subjectName = %s"
@@ -407,6 +458,12 @@ def process_question_explanation(task_id, category_id, subject_name, topic_names
             raise Exception("No questions found")
         question_ids = [str(row["questionId"]) for row in question_data]
 
+        # If resuming, skip already processed questions
+        if resume:
+            processed_ids = task_status[task_id].get("processed_question_ids", [])
+            question_ids = [qid for qid in question_ids if qid not in processed_ids]
+            print(f"Resuming task: {len(processed_ids)} already processed, {len(question_ids)} remaining")
+
         # Get questions needing explanations
         if question_ids:
             ids_placeholders = ",".join(["%s"] * len(question_ids))
@@ -454,7 +511,21 @@ def process_question_explanation(task_id, category_id, subject_name, topic_names
             # Process completed tasks as they finish
             for future in as_completed(future_to_question):
                 idx, q = future_to_question[future]
-                
+
+                # Check for pause
+                if running_tasks.get(task_id, {}).get('paused', False):
+                    # Cancel all pending futures
+                    for f in future_to_question:
+                        f.cancel()
+
+                    with status_lock:
+                        task_status[task_id]["status"] = "paused"
+                        task_status[task_id]["paused_at"] = time.strftime('%Y-%m-%d %H:%M:%S')
+                        save_task_status()
+                    running_tasks.pop(task_id, None)
+                    print(f"Task {task_id} paused. Progress saved: {task_status[task_id]['progress']}/{task_status[task_id]['total']}")
+                    return
+
                 # Check for cancellation
                 if running_tasks.get(task_id, {}).get('cancelled', False):
                     # Cancel all pending futures
@@ -468,18 +539,22 @@ def process_question_explanation(task_id, category_id, subject_name, topic_names
                         save_task_status()
                     running_tasks.pop(task_id, None)
                     return
-                
+
                 try:
                     result = future.result()
-                    
+
                     # Update progress and results thread-safely
                     with status_lock:
                         task_status[task_id]["results"].append(result)
                         task_status[task_id]["progress"] = len(task_status[task_id]["results"])
                         task_status[task_id]["status"] = "processing"
                         task_status[task_id]["latest_result"] = result
+
+                        # Save processed question ID for resume functionality
+                        task_status[task_id]["processed_question_ids"].append(str(result['questionId']))
+
                         save_task_status()
-                    
+
                     print(f"Completed question {result['questionId']} ({task_status[task_id]['progress']}/{task_status[task_id]['total']})")
                     
                 except Exception as e:
