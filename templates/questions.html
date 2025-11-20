@@ -1254,12 +1254,16 @@
                                 const progressPercent = topic.to_process > 0 ?
                                     Math.round((topic.processed / topic.to_process) * 100) : 0;
 
+                                // In Overwrite Mode (checked), show 0 for missing since we're doing everything anyway
+                                // In Add Mode (unchecked), show actual missing count since that's what we're working on
+                                const missingDisplay = topic.overwrite_mode ? 0 : topic.without_explanations;
+
                                 statusHTML += `
                                     <tr class="${topic.status === 'processing' ? 'table-primary' : topic.status === 'completed' ? 'table-success' : ''}">
                                         <td><strong>${topic.topic_name}</strong></td>
                                         <td><span class="badge bg-secondary">${topic.total_questions}</span></td>
                                         <td><span class="badge bg-success">${topic.with_explanations}</span></td>
-                                        <td><span class="badge bg-danger">${topic.without_explanations}</span></td>
+                                        <td><span class="badge bg-danger">${missingDisplay}</span></td>
                                         <td>${toProcessBadge}</td>
                                         <td>
                                             <span class="badge bg-info">${topic.processed || 0}/${topic.to_process}</span>
@@ -1279,8 +1283,8 @@
                                                 <strong>Legend:</strong><br>
                                                 📊 Total = All questions in topic<br>
                                                 ✅ Already Have = Questions with existing explanations<br>
-                                                ❌ Missing = Questions without explanations<br>
-                                                🎯 Will Process = Questions to be processed (${overwriteMode ? 'ALL if overwrite checked' : 'only MISSING if overwrite unchecked'})<br>
+                                                ❌ Missing = Questions without explanations (shown as 0 in Overwrite Mode)<br>
+                                                🎯 Will Process = Questions to be processed (${overwriteMode ? 'ALL if overwrite checked' : 'only NEW if overwrite unchecked'})<br>
                                                 🔄 Done Now = Questions processed in this run
                                             </small>
                                         </div>
