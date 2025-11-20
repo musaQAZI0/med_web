@@ -10,11 +10,14 @@ logger = logging.getLogger(__name__)
 def get_db_connection():
     """Create a new database connection (used only when PHP bridge is disabled)."""
     try:
+        # Ensure password is not None
+        password = Config.MYSQL_PASSWORD if Config.MYSQL_PASSWORD is not None else ""
+
         connection = pymysql.connect(
             host=Config.MYSQL_HOST,
             port=Config.MYSQL_PORT,
             user=Config.MYSQL_USER,
-            password=Config.MYSQL_PASSWORD,
+            password=password,
             database=Config.MYSQL_DATABASE,
             charset='utf8mb4',
             cursorclass=pymysql.cursors.DictCursor
@@ -124,15 +127,20 @@ def get_all_table_names():
     """
     Fetches a list of all table names in the currently connected database.
     """
-    query = "SHOW TABLES" 
+    query = "SHOW TABLES"
     result = execute_query(query)
     if "error" in result:
         return result
-        
+
     table_names = []
-    if result.get("data"):
-        if result["data"]:
-            column_name = list(result["data"][0].keys())[0]
-            table_names = [row[column_name] for row in result["data"]]
-    
+    data = result.get("data")
+
+    # Type guard: ensure data is a list and not empty
+    if data and isinstance(data, list) and len(data) > 0:
+        # Get the first row to determine column name
+        first_row = data[0]
+        if isinstance(first_row, dict) and first_row:
+            column_name = list(first_row.keys())[0]
+            table_names = [row[column_name] for row in data if isinstance(row, dict)]
+
     return {"data": table_names}

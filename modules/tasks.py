@@ -111,53 +111,6 @@ running_tasks = {}
 def get_task_status(task_id):
     return task_status.get(task_id, {"status": "not_found"})
 
-def pause_task(task_id):
-    """Pause a running task - can be resumed later"""
-    if task_id in running_tasks:
-        # Set pause flag - the task will check this periodically
-        running_tasks[task_id]['paused'] = True
-        task_status[task_id]["status"] = "pausing"
-        save_task_status()
-        return True
-    return False
-
-def resume_task(task_id):
-    """Resume a paused task from where it left off"""
-    if task_id not in task_status:
-        return False
-
-    status = task_status[task_id].get("status")
-    if status != "paused":
-        return False
-
-    # Extract original parameters
-    task_params = task_status[task_id].get("task_params", {})
-    task_type = task_status[task_id].get("task_type")
-
-    if task_type == "explanation_generation":
-        # Resume explanation task
-        category_id = task_params.get("category_id")
-        subject_name = task_params.get("subject_name")
-        topic_names = task_params.get("topic_names", [])
-        generate_all = task_params.get("generate_all", False)
-        overwrite_existing = task_params.get("overwrite_existing", False)
-
-        # Mark as resuming
-        task_status[task_id]["status"] = "resuming"
-        save_task_status()
-
-        # Start new thread to continue processing
-        thread = threading.Thread(
-            target=process_question_explanation,
-            args=(task_id, category_id, subject_name, topic_names, generate_all, overwrite_existing, 3),
-            kwargs={"resume": True}
-        )
-        running_tasks[task_id] = {'thread': thread, 'paused': False, 'cancelled': False}
-        thread.start()
-        return True
-
-    return False
-
 def cancel_task(task_id):
     if task_id in running_tasks:
         # Set cancellation flag - the task will check this periodically
@@ -377,15 +330,13 @@ def start_explanation_task(category_id, subject_name, topic_names, generate_all=
     return task_id
 
 
-def process_question_explanation(task_id, category_id, subject_name, topic_names, generate_all, overwrite_existing=False, max_workers=3, resume=False):
+def process_question_explanation(task_id, category_id, subject_name, topic_names, generate_all, overwrite_existing=False, max_workers=3):
     try:
         with status_lock:
             task_status[task_id]["status"] = "processing"
+            task_status[task_id]["topic_progress"] = []
+            task_status[task_id]["current_topic"] = None
             save_task_status()
-
-        # Track processed questions for resume functionality
-        if "processed_question_ids" not in task_status[task_id]:
-            task_status[task_id]["processed_question_ids"] = []
 
         # Get subject ID
         query_subject = "SELECT id FROM subject WHERE categoryId = %s AND subjectName = %s"
@@ -394,179 +345,237 @@ def process_question_explanation(task_id, category_id, subject_name, topic_names
             raise Exception("Subject not found")
         subject_id = subject.get("data")[0]["id"]
 
-        # Get question IDs - conditionally filter by existing descriptions
+        # Build list of topics to process
+        topics_to_process = []
+
         if generate_all:
-            # Generate for ALL topics in the subject
-            if overwrite_existing:
-                # Get ALL questions for this subject
-                query_ids = """
-                    SELECT DISTINCT q.questionId
-                    FROM tblquestion q
-                    JOIN topicQueRel rel ON rel.questionId = q.questionId
-                    JOIN topics t ON t.id = rel.topicId
-                    WHERE t.subjectId = %s
-                """
-            else:
-                # Get only questions WITHOUT descriptions
-                query_ids = """
-                    SELECT DISTINCT q.questionId
-                    FROM tblquestion q
-                    JOIN topicQueRel rel ON rel.questionId = q.questionId
-                    JOIN topics t ON t.id = rel.topicId
-                    WHERE t.subjectId = %s AND (q.description IS NULL OR TRIM(q.description) = '')
-                """
-            ids_resp = execute_query(query_ids, (subject_id,))
+            # Get all topics for this subject
+            query_topics = "SELECT id, topicName FROM topics WHERE subjectId = %s"
+            topics_result = execute_query(query_topics, (subject_id,))
+            if topics_result.get("data"):
+                for topic_row in topics_result["data"]:
+                    topics_to_process.append({
+                        "id": topic_row["id"],
+                        "name": topic_row["topicName"]
+                    })
         else:
-            # Generate for specific topic(s)
-            # First, get topic IDs for all selected topics
-            topic_ids = []
+            # Get specific topics
             for topic_name in topic_names:
                 query_topic = "SELECT id FROM topics WHERE subjectId = %s AND topicName = %s"
                 topic = execute_query(query_topic, (subject_id, topic_name))
                 if topic.get("data"):
-                    topic_ids.append(topic.get("data")[0]["id"])
+                    topics_to_process.append({
+                        "id": topic.get("data")[0]["id"],
+                        "name": topic_name
+                    })
                 else:
                     print(f"Warning: Topic '{topic_name}' not found, skipping...")
 
-            if not topic_ids:
-                raise Exception("No valid topics found")
+        if not topics_to_process:
+            raise Exception("No valid topics found")
 
-            # Build query for multiple topics
-            topic_ids_placeholders = ",".join(["%s"] * len(topic_ids))
+        # Process each topic sequentially
+        all_results = []
+        total_progress = 0
 
+        for topic_idx, topic_info in enumerate(topics_to_process, start=1):
+            topic_id = topic_info["id"]
+            topic_name = topic_info["name"]
+
+            # Update current topic status
+            with status_lock:
+                task_status[task_id]["current_topic"] = {
+                    "name": topic_name,
+                    "index": topic_idx,
+                    "total_topics": len(topics_to_process)
+                }
+                save_task_status()
+
+            print(f"\n=== Processing Topic {topic_idx}/{len(topics_to_process)}: {topic_name} ===")
+
+            # Get statistics for this topic
+            query_total = """
+                SELECT COUNT(DISTINCT q.questionId) as total
+                FROM tblquestion q
+                JOIN topicQueRel rel ON rel.questionId = q.questionId
+                WHERE rel.topicId = %s
+            """
+            total_result = execute_query(query_total, (topic_id,))
+            total_count = total_result["data"][0]["total"] if total_result.get("data") else 0
+
+            query_with_desc = """
+                SELECT COUNT(DISTINCT q.questionId) as with_desc
+                FROM tblquestion q
+                JOIN topicQueRel rel ON rel.questionId = q.questionId
+                WHERE rel.topicId = %s
+                AND q.description IS NOT NULL
+                AND TRIM(q.description) != ''
+            """
+            with_desc_result = execute_query(query_with_desc, (topic_id,))
+            with_desc_count = with_desc_result["data"][0]["with_desc"] if with_desc_result.get("data") else 0
+
+            without_desc_count = total_count - with_desc_count
+
+            # Store topic statistics
+            topic_stats = {
+                "topic_name": topic_name,
+                "total_questions": total_count,
+                "with_explanations": with_desc_count,
+                "without_explanations": without_desc_count,
+                "to_process": total_count if overwrite_existing else without_desc_count,
+                "overwrite_mode": overwrite_existing,
+                "processed": 0,
+                "status": "processing"
+            }
+
+            with status_lock:
+                task_status[task_id]["topic_progress"].append(topic_stats)
+                save_task_status()
+
+            print(f"Topic Statistics:")
+            print(f"  Total questions: {total_count}")
+            print(f"  With explanations: {with_desc_count}")
+            print(f"  Without explanations: {without_desc_count}")
+
+            # Get questions to process for this topic
             if overwrite_existing:
-                # Get ALL questions for these topics
-                query_ids = f"""
+                query_ids = """
                     SELECT DISTINCT q.questionId
                     FROM tblquestion q
                     JOIN topicQueRel rel ON rel.questionId = q.questionId
-                    WHERE rel.topicId IN ({topic_ids_placeholders})
+                    WHERE rel.topicId = %s
                 """
             else:
-                # Get only questions WITHOUT descriptions
-                query_ids = f"""
+                query_ids = """
                     SELECT DISTINCT q.questionId
                     FROM tblquestion q
                     JOIN topicQueRel rel ON rel.questionId = q.questionId
-                    WHERE rel.topicId IN ({topic_ids_placeholders})
+                    WHERE rel.topicId = %s
                     AND (q.description IS NULL OR TRIM(q.description) = '')
                 """
-            ids_resp = execute_query(query_ids, topic_ids)
-            
-        question_data = ids_resp.get("data", [])
-        if not isinstance(question_data, list) or not question_data:
-            raise Exception("No questions found")
-        question_ids = [str(row["questionId"]) for row in question_data]
 
-        # If resuming, skip already processed questions
-        if resume:
-            processed_ids = task_status[task_id].get("processed_question_ids", [])
-            question_ids = [qid for qid in question_ids if qid not in processed_ids]
-            print(f"Resuming task: {len(processed_ids)} already processed, {len(question_ids)} remaining")
+            ids_resp = execute_query(query_ids, (topic_id,))
 
-        # Get questions needing explanations
-        if question_ids:
+            question_data = ids_resp.get("data", [])
+
+            if not question_data or not isinstance(question_data, list):
+                print(f"  No questions to process for this topic.")
+                # Mark topic as completed
+                with status_lock:
+                    task_status[task_id]["topic_progress"][topic_idx - 1]["status"] = "completed"
+                    save_task_status()
+                continue
+
+            question_ids = [str(row["questionId"]) for row in question_data]
+
+            # Get questions needing explanations
             ids_placeholders = ",".join(["%s"] * len(question_ids))
             query_questions = f"SELECT questionId, question FROM tblquestion WHERE questionId IN ({ids_placeholders})"
             questions_resp = execute_query(query_questions, question_ids)
             questions = questions_resp.get("data", [])
-        else:
-            questions = []
 
-        if not questions:
-            with status_lock:
-                task_status[task_id] = {
-                    "status": "completed",
-                    "progress": 0,
-                    "total": 0,
-                    "results": [],
-                    "error": "All questions already explained."
-                }
-            return
+            if not questions:
+                print(f"  No questions found for processing.")
+                # Mark topic as completed
+                with status_lock:
+                    task_status[task_id]["topic_progress"][topic_idx - 1]["status"] = "completed"
+                    save_task_status()
+                continue
 
-        # Get options
-        ids_placeholders = ",".join(["%s"] * len(question_ids))
-        query_options = f"SELECT questionId, questionImageText, isCorrectAnswer FROM tblquestionoption WHERE questionId IN ({ids_placeholders})"
-        options_resp = execute_query(query_options, question_ids)
-        options = options_resp.get("data", [])
+            # Get options for these questions
+            query_options = f"SELECT questionId, questionImageText, isCorrectAnswer FROM tblquestionoption WHERE questionId IN ({ids_placeholders})"
+            options_resp = execute_query(query_options, question_ids)
+            options = options_resp.get("data", [])
 
-        # Update total count
-        with status_lock:
-            task_status[task_id]["total"] = len(questions)
-            save_task_status()
+            print(f"  Processing {len(questions)} questions for this topic...")
 
-        # Process questions in parallel using ThreadPoolExecutor
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            # Submit all questions to the thread pool
-            future_to_question = {
-                executor.submit(
-                    process_single_question, 
+            # Calculate total for progress tracking
+            if topic_idx == 1:
+                # First topic - set initial total
+                with status_lock:
+                    task_status[task_id]["total"] = len(questions)
+                    task_status[task_id]["progress"] = 0
+                    save_task_status()
+
+            # Process questions in parallel using ThreadPoolExecutor
+            topic_results = []
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                # Submit all questions to the thread pool
+                future_to_question = {
+                    executor.submit(
+                        process_single_question, 
                     task_id, 
                     idx, 
                     q, 
                     options
-                ): (idx, q) for idx, q in enumerate(questions, start=1)
-            }
-            
-            # Process completed tasks as they finish
-            for future in as_completed(future_to_question):
-                idx, q = future_to_question[future]
+                    ): (idx, q) for idx, q in enumerate(questions, start=1)
+                }
 
-                # Check for pause
-                if running_tasks.get(task_id, {}).get('paused', False):
-                    # Cancel all pending futures
-                    for f in future_to_question:
-                        f.cancel()
+                # Process completed tasks as they finish
+                for future in as_completed(future_to_question):
+                    idx, q = future_to_question[future]
 
-                    with status_lock:
-                        task_status[task_id]["status"] = "paused"
-                        task_status[task_id]["paused_at"] = time.strftime('%Y-%m-%d %H:%M:%S')
-                        save_task_status()
-                    running_tasks.pop(task_id, None)
-                    print(f"Task {task_id} paused. Progress saved: {task_status[task_id]['progress']}/{task_status[task_id]['total']}")
-                    return
+                    # Check for cancellation
+                    if running_tasks.get(task_id, {}).get('cancelled', False):
+                        # Cancel all pending futures
+                        for f in future_to_question:
+                            f.cancel()
 
-                # Check for cancellation
-                if running_tasks.get(task_id, {}).get('cancelled', False):
-                    # Cancel all pending futures
-                    for f in future_to_question:
-                        f.cancel()
+                        with status_lock:
+                            task_status[task_id]["status"] = "cancelled"
+                            task_status[task_id]["error"] = "Task was cancelled."
+                            task_status[task_id]["completed_at"] = time.strftime('%Y-%m-%d %H:%M:%S')
+                            save_task_status()
+                        running_tasks.pop(task_id, None)
+                        return
 
-                    with status_lock:
-                        task_status[task_id]["status"] = "cancelled"
-                        task_status[task_id]["error"] = "Task was cancelled."
-                        task_status[task_id]["completed_at"] = time.strftime('%Y-%m-%d %H:%M:%S')
-                        save_task_status()
-                    running_tasks.pop(task_id, None)
-                    return
+                    try:
+                        result = future.result()
 
-                try:
-                    result = future.result()
+                        # Update progress and results thread-safely
+                        with status_lock:
+                            all_results.append(result)
+                            topic_results.append(result)
+                            total_progress += 1
 
-                    # Update progress and results thread-safely
-                    with status_lock:
-                        task_status[task_id]["results"].append(result)
-                        task_status[task_id]["progress"] = len(task_status[task_id]["results"])
-                        task_status[task_id]["status"] = "processing"
-                        task_status[task_id]["latest_result"] = result
+                            task_status[task_id]["results"] = all_results
+                            task_status[task_id]["progress"] = total_progress
+                            task_status[task_id]["status"] = "processing"
+                            task_status[task_id]["latest_result"] = result
 
-                        # Save processed question ID for resume functionality
-                        task_status[task_id]["processed_question_ids"].append(str(result['questionId']))
+                            # Update topic progress
+                            task_status[task_id]["topic_progress"][topic_idx - 1]["processed"] = len(topic_results)
 
-                        save_task_status()
+                            save_task_status()
 
-                    print(f"Completed question {result['questionId']} ({task_status[task_id]['progress']}/{task_status[task_id]['total']})")
-                    
-                except Exception as e:
-                    error_result = {
-                        "index": idx,
-                        "questionId": q["questionId"],
-                        "error": str(e)
-                    }
-                    with status_lock:
-                        task_status[task_id]["results"].append(error_result)
-                        task_status[task_id]["progress"] = len(task_status[task_id]["results"])
-                    print(f"Error processing question {q.get('questionId', 'unknown')}: {str(e)}")
+                        print(f"Completed question {result['questionId']} (Topic: {topic_name}, {len(topic_results)}/{len(questions)})")
+
+                    except Exception as e:
+                        error_result = {
+                            "index": idx,
+                            "questionId": q["questionId"],
+                            "error": str(e)
+                        }
+                        with status_lock:
+                            all_results.append(error_result)
+                            total_progress += 1
+                            task_status[task_id]["results"] = all_results
+                            task_status[task_id]["progress"] = total_progress
+                        print(f"Error processing question {q.get('questionId', 'unknown')}: {str(e)}")
+
+            # Mark this topic as completed
+            with status_lock:
+                task_status[task_id]["topic_progress"][topic_idx - 1]["status"] = "completed"
+                save_task_status()
+
+            print(f"  Completed topic: {topic_name} ({len(topic_results)} questions processed)")
+
+            # Update total for next topic
+            if topic_idx < len(topics_to_process):
+                with status_lock:
+                    # Add next topic's questions to total
+                    task_status[task_id]["total"] = total_progress + 100  # Placeholder, will be updated
+                    save_task_status()
         
         # Mark as completed
         with status_lock:

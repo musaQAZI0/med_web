@@ -1114,18 +1114,6 @@
                             html += `<div class="mt-1">Error: ${data.error}</div>`;
                         }
 
-                        // Add resume button for paused tasks
-                        if (data.status === 'paused') {
-                            html += `
-                                <div class="mt-2">
-                                    <button class="btn btn-sm btn-success" onclick="TaskManager.resumeTask('${taskId}', 'explanationTaskStatus')">
-                                        <i class="bi bi-play-fill"></i> Resume Task
-                                    </button>
-                                    <small class="text-muted ms-2">Progress saved: ${data.progress || 0}/${data.total || 0}</small>
-                                </div>
-                            `;
-                        }
-
                         html += '</div>';
                         
                         if (data.results && data.results.length > 0) {
@@ -1191,7 +1179,7 @@
                         }
                         
                         const progress = data.progress || 'Processing...';
-                        statusContainer.innerHTML = `
+                        let statusHTML = `
                             <div class="alert alert-info">
                                 <div class="d-flex align-items-center justify-content-between">
                                     <div class="d-flex align-items-center">
@@ -1199,14 +1187,11 @@
                                             <span class="visually-hidden">Loading...</span>
                                         </div>
                                         <div>
-                                            <div>Task status: ${data.status} (Progress: ${progress}/${data.total || '?'} questions)</div>
+                                            <div>Task status: ${data.status} (Total Progress: ${progress}/${data.total || '?'} questions)</div>
                                             <small class="text-muted">Task ID: ${taskId}</small>
                                         </div>
                                     </div>
                                     <div>
-                                        <button class="btn btn-sm btn-warning me-1" onclick="TaskManager.pauseTask('${taskId}', 'explanationTaskStatus')">
-                                            <i class="bi bi-pause-fill"></i> Pause
-                                        </button>
                                         <button class="btn btn-sm btn-danger" onclick="TaskManager.cancelTask('${taskId}', 'explanationTaskStatus')">
                                             <i class="bi bi-x-circle"></i> Cancel
                                         </button>
@@ -1214,6 +1199,97 @@
                                 </div>
                             </div>
                         `;
+
+                        // Display current topic
+                        if (data.current_topic) {
+                            statusHTML += `
+                                <div class="alert alert-primary mb-2">
+                                    <strong>📚 Current Topic:</strong> ${data.current_topic.name}
+                                    <span class="badge bg-primary">${data.current_topic.index}/${data.current_topic.total_topics}</span>
+                                </div>
+                            `;
+                        }
+
+                        // Display topic progress
+                        if (data.topic_progress && data.topic_progress.length > 0) {
+                            const overwriteMode = data.topic_progress[0]?.overwrite_mode || false;
+                            const modeLabel = overwriteMode ?
+                                '<span class="badge bg-warning">🔄 Overwrite Mode: Processing ALL questions</span>' :
+                                '<span class="badge bg-info">➕ Add Mode: Processing only questions WITHOUT explanations</span>';
+
+                            statusHTML += `
+                                <div class="card mb-2">
+                                    <div class="card-header d-flex justify-content-between align-items-center">
+                                        <strong>Topic Progress</strong>
+                                        ${modeLabel}
+                                    </div>
+                                    <div class="card-body">
+                                        <div class="table-responsive">
+                                            <table class="table table-sm table-bordered">
+                                                <thead>
+                                                    <tr>
+                                                        <th>Topic</th>
+                                                        <th>📊 Total</th>
+                                                        <th>✅ Already Have</th>
+                                                        <th>❌ Missing</th>
+                                                        <th>🎯 Will Process</th>
+                                                        <th>🔄 Done Now</th>
+                                                        <th>Status</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody>
+                            `;
+
+                            data.topic_progress.forEach((topic, idx) => {
+                                const statusBadge = topic.status === 'completed' ?
+                                    '<span class="badge bg-success">✓ Completed</span>' :
+                                    topic.status === 'processing' ?
+                                    '<span class="badge bg-info">⏳ Processing</span>' :
+                                    '<span class="badge bg-secondary">⏸ Pending</span>';
+
+                                const toProcessBadge = topic.overwrite_mode ?
+                                    `<span class="badge bg-warning text-dark" title="Will overwrite ${topic.with_explanations} existing">${topic.to_process} (ALL)</span>` :
+                                    `<span class="badge bg-primary">${topic.to_process} (NEW)</span>`;
+
+                                const progressPercent = topic.to_process > 0 ?
+                                    Math.round((topic.processed / topic.to_process) * 100) : 0;
+
+                                statusHTML += `
+                                    <tr class="${topic.status === 'processing' ? 'table-primary' : topic.status === 'completed' ? 'table-success' : ''}">
+                                        <td><strong>${topic.topic_name}</strong></td>
+                                        <td><span class="badge bg-secondary">${topic.total_questions}</span></td>
+                                        <td><span class="badge bg-success">${topic.with_explanations}</span></td>
+                                        <td><span class="badge bg-danger">${topic.without_explanations}</span></td>
+                                        <td>${toProcessBadge}</td>
+                                        <td>
+                                            <span class="badge bg-info">${topic.processed || 0}/${topic.to_process}</span>
+                                            ${topic.to_process > 0 ? `<small class="text-muted ms-1">(${progressPercent}%)</small>` : ''}
+                                        </td>
+                                        <td>${statusBadge}</td>
+                                    </tr>
+                                `;
+                            });
+
+                            statusHTML += `
+                                                </tbody>
+                                            </table>
+                                        </div>
+                                        <div class="mt-2">
+                                            <small class="text-muted">
+                                                <strong>Legend:</strong><br>
+                                                📊 Total = All questions in topic<br>
+                                                ✅ Already Have = Questions with existing explanations<br>
+                                                ❌ Missing = Questions without explanations<br>
+                                                🎯 Will Process = Questions to be processed (${overwriteMode ? 'ALL if overwrite checked' : 'only MISSING if overwrite unchecked'})<br>
+                                                🔄 Done Now = Questions processed in this run
+                                            </small>
+                                        </div>
+                                    </div>
+                                </div>
+                            `;
+                        }
+
+                        statusContainer.innerHTML = statusHTML;
                         
                         const resultsContainer = element.querySelector('.task-results-container');
                         if (data.results && data.results.length > 0) {
@@ -1327,41 +1403,6 @@
                     }
                 });
         }, 2000);
-        }
-
-        static pauseTask(taskId, elementId) {
-            fetch(`/pause-task/${taskId}`, {
-                method: 'POST'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    console.log('Task pause initiated:', taskId);
-                } else {
-                    alert(`Failed to pause task: ${data.error}`);
-                }
-            })
-            .catch(error => {
-                alert(`Error pausing task: ${error.message}`);
-            });
-        }
-
-        static resumeTask(taskId, elementId) {
-            fetch(`/resume-task/${taskId}`, {
-                method: 'POST'
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.status === 'success') {
-                    // Start polling again
-                    TaskManager.pollTaskStatus(taskId, elementId);
-                } else {
-                    alert(`Failed to resume task: ${data.error}`);
-                }
-            })
-            .catch(error => {
-                alert(`Error resuming task: ${error.message}`);
-            });
         }
 
         static cancelTask(taskId, elementId) {

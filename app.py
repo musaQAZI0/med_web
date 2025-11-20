@@ -25,6 +25,29 @@ def mcq_generation():
     return render_template('mcq_generation.html')
 
 
+@app.route('/analyze-shared-questions', methods=['GET'])
+def analyze_shared_questions():
+    """Find questions that belong to multiple topics"""
+    try:
+        query = """
+            SELECT
+                q.questionId,
+                q.question,
+                COUNT(DISTINCT rel.topicId) as topic_count,
+                GROUP_CONCAT(DISTINCT t.topicName SEPARATOR ' | ') as topics
+            FROM tblquestion q
+            JOIN topicQueRel rel ON rel.questionId = q.questionId
+            JOIN topics t ON t.id = rel.topicId
+            GROUP BY q.questionId, q.question
+            HAVING COUNT(DISTINCT rel.topicId) > 1
+            ORDER BY topic_count DESC
+            LIMIT 10
+        """
+        result = database.execute_query(query)
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/health', methods=['GET'])
 def health():
     """
@@ -390,25 +413,6 @@ def task_status_check(task_id):
     if not task or task.get("status") == "not_found":
         return jsonify({"status": "not_found"}), 404
     return jsonify(task)
-
-
-# Pause Task
-@app.route('/pause-task/<task_id>', methods=['POST'])
-def pause_task(task_id):
-    success = tasks.pause_task(task_id)
-    if success:
-        return jsonify({"status": "success", "message": "Task pause initiated"}), 200
-    else:
-        return jsonify({"status": "error", "error": "Task not found or could not be paused"}), 404
-
-# Resume Task
-@app.route('/resume-task/<task_id>', methods=['POST'])
-def resume_task(task_id):
-    success = tasks.resume_task(task_id)
-    if success:
-        return jsonify({"status": "success", "message": "Task resumed"}), 200
-    else:
-        return jsonify({"status": "error", "error": "Task not found or not paused"}), 404
 
 # Cancel Task
 @app.route('/cancel-task/<task_id>', methods=['POST'])
