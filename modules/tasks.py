@@ -401,7 +401,7 @@ def process_question_explanation(task_id, category_id, subject_name, topic_names
                 WHERE rel.topicId = %s
             """
             total_result = execute_query(query_total, (topic_id,))
-            total_count = total_result["data"][0]["total"] if total_result.get("data") else 0
+            total_count = int(total_result["data"][0]["total"]) if total_result.get("data") else 0
 
             query_with_desc = """
                 SELECT COUNT(DISTINCT q.questionId) as with_desc
@@ -412,7 +412,7 @@ def process_question_explanation(task_id, category_id, subject_name, topic_names
                 AND TRIM(q.description) != ''
             """
             with_desc_result = execute_query(query_with_desc, (topic_id,))
-            with_desc_count = with_desc_result["data"][0]["with_desc"] if with_desc_result.get("data") else 0
+            with_desc_count = int(with_desc_result["data"][0]["with_desc"]) if with_desc_result.get("data") else 0
 
             without_desc_count = total_count - with_desc_count
 
