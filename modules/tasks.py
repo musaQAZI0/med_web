@@ -374,6 +374,36 @@ def process_question_explanation(task_id, category_id, subject_name, topic_names
         if not topics_to_process:
             raise Exception("No valid topics found")
 
+        # Calculate total questions across ALL topics upfront for accurate progress tracking
+        total_questions_to_process = 0
+        for topic_info in topics_to_process:
+            topic_id = topic_info["id"]
+            if overwrite_existing:
+                query_count = """
+                    SELECT COUNT(DISTINCT q.questionId) as count
+                    FROM tblquestion q
+                    JOIN topicQueRel rel ON rel.questionId = q.questionId
+                    WHERE rel.topicId = %s
+                """
+            else:
+                query_count = """
+                    SELECT COUNT(DISTINCT q.questionId) as count
+                    FROM tblquestion q
+                    JOIN topicQueRel rel ON rel.questionId = q.questionId
+                    WHERE rel.topicId = %s
+                    AND (q.description IS NULL OR TRIM(q.description) = '')
+                """
+            count_result = execute_query(query_count, (topic_id,))
+            total_questions_to_process += int(count_result["data"][0]["count"]) if count_result.get("data") else 0
+
+        # Set total upfront
+        with status_lock:
+            task_status[task_id]["total"] = total_questions_to_process
+            task_status[task_id]["progress"] = 0
+            save_task_status()
+
+        print(f"\nTotal questions to process across all topics: {total_questions_to_process}")
+
         # Process each topic sequentially
         all_results = []
         total_progress = 0
@@ -489,14 +519,6 @@ def process_question_explanation(task_id, category_id, subject_name, topic_names
 
             print(f"  Processing {len(questions)} questions for this topic...")
 
-            # Calculate total for progress tracking
-            if topic_idx == 1:
-                # First topic - set initial total
-                with status_lock:
-                    task_status[task_id]["total"] = len(questions)
-                    task_status[task_id]["progress"] = 0
-                    save_task_status()
-
             # Process questions in parallel using ThreadPoolExecutor
             topic_results = []
             with ThreadPoolExecutor(max_workers=max_workers) as executor:
@@ -570,13 +592,6 @@ def process_question_explanation(task_id, category_id, subject_name, topic_names
 
             print(f"  Completed topic: {topic_name} ({len(topic_results)} questions processed)")
 
-            # Update total for next topic
-            if topic_idx < len(topics_to_process):
-                with status_lock:
-                    # Add next topic's questions to total
-                    task_status[task_id]["total"] = total_progress + 100  # Placeholder, will be updated
-                    save_task_status()
-        
         # Mark as completed
         with status_lock:
             task_status[task_id]["status"] = "completed"

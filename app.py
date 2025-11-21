@@ -48,6 +48,97 @@ def analyze_shared_questions():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+@app.route('/analyze-topic-progress', methods=['POST'])
+def analyze_topic_progress():
+    """Analyze explanation progress for all topics in a subject"""
+    try:
+        data = request.get_json()
+        category_id = int(data.get("categoryId"))
+        subject_name = data.get("subjectName")
+
+        # Get subject ID
+        query_subject = "SELECT id FROM subject WHERE categoryId = %s AND subjectName = %s"
+        subject_result = database.execute_query(query_subject, (category_id, subject_name))
+
+        if not subject_result.get("data"):
+            return jsonify({"error": "Subject not found"}), 404
+
+        subject_id = subject_result["data"][0]["id"]
+
+        # Get all topics for this subject
+        query_topics = "SELECT id, topicName FROM topics WHERE subjectId = %s"
+        topics_result = database.execute_query(query_topics, (subject_id,))
+
+        if not topics_result.get("data"):
+            return jsonify({"error": "No topics found"}), 404
+
+        topics = topics_result["data"]
+        topics_analysis = []
+        topics_with_missing = []
+        topics_complete = []
+
+        for topic in topics:
+            topic_id = topic["id"]
+            topic_name = topic["topicName"]
+
+            # Get total questions
+            query_total = """
+                SELECT COUNT(DISTINCT q.questionId) as total
+                FROM tblquestion q
+                JOIN topicQueRel rel ON rel.questionId = q.questionId
+                WHERE rel.topicId = %s
+            """
+            total_result = database.execute_query(query_total, (topic_id,))
+            total_count = int(total_result["data"][0]["total"]) if total_result.get("data") else 0
+
+            # Get questions with explanations
+            query_with_desc = """
+                SELECT COUNT(DISTINCT q.questionId) as with_desc
+                FROM tblquestion q
+                JOIN topicQueRel rel ON rel.questionId = q.questionId
+                WHERE rel.topicId = %s
+                AND q.description IS NOT NULL
+                AND TRIM(q.description) != ''
+            """
+            with_desc_result = database.execute_query(query_with_desc, (topic_id,))
+            with_desc_count = int(with_desc_result["data"][0]["with_desc"]) if with_desc_result.get("data") else 0
+
+            without_desc_count = total_count - with_desc_count
+            percentage_complete = (with_desc_count / total_count * 100) if total_count > 0 else 0
+
+            topic_info = {
+                "name": topic_name,
+                "total": total_count,
+                "with_explanations": with_desc_count,
+                "missing": without_desc_count,
+                "percentage_complete": round(percentage_complete, 1)
+            }
+
+            topics_analysis.append(topic_info)
+
+            if without_desc_count > 0:
+                topics_with_missing.append(topic_info)
+            else:
+                topics_complete.append(topic_info)
+
+        # Sort topics with missing by missing count (descending)
+        topics_with_missing.sort(key=lambda x: x['missing'], reverse=True)
+
+        return jsonify({
+            "subject": subject_name,
+            "summary": {
+                "total_topics": len(topics),
+                "topics_complete": len(topics_complete),
+                "topics_with_missing": len(topics_with_missing)
+            },
+            "topics_needing_work": topics_with_missing,
+            "topics_complete": topics_complete,
+            "all_topics": topics_analysis
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 @app.route('/health', methods=['GET'])
 def health():
     """
