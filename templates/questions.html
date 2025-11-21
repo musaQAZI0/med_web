@@ -138,12 +138,8 @@
                         Nadpisz istniejące wyjaśnienia
                     </label>
                 </div>
-                <div class="d-flex gap-2">
-                    <button type="submit" class="btn btn-warning">Generuj wyjaśnienia (według wybranych tematów)</button>
-                    <button type="button" class="btn btn-info" id="analyzeProgressBtn">📊 Sprawdź postęp</button>
-                </div>
+                <button type="submit" class="btn btn-warning">Generuj wyjaśnienia (według wybranych tematów)</button>
             </form>
-            <div id="progressAnalysisResult" class="mt-3"></div>
         </div>
         <!-- All Topics in Subject -->
         <div class="tab-pane fade" id="all-topics" role="tabpanel">
@@ -735,127 +731,6 @@
             })
             .catch(error => {
                 document.getElementById('explanationTaskStatus').innerHTML = `<div class="alert alert-danger">Network error: ${error.message}</div>`;
-            });
-        });
-
-        document.getElementById('analyzeProgressBtn').addEventListener('click', function() {
-            const categoryId = document.getElementById('categoryIdGen').value;
-            const subjectName = document.getElementById('subjectNameGen').value;
-            const resultDiv = document.getElementById('progressAnalysisResult');
-
-            if (!categoryId || !subjectName) {
-                resultDiv.innerHTML = '<div class="alert alert-warning">Please select category and subject first.</div>';
-                return;
-            }
-
-            resultDiv.innerHTML = '<div class="alert alert-info">Analyzing progress... Please wait.</div>';
-
-            fetch('/analyze-topic-progress', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ categoryId, subjectName })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    resultDiv.innerHTML = `<div class="alert alert-danger">Error: ${data.error}</div>`;
-                    return;
-                }
-
-                let html = `
-                    <div class="card mt-3">
-                        <div class="card-header bg-primary text-white">
-                            <h5>Progress Analysis: ${data.subject}</h5>
-                        </div>
-                        <div class="card-body">
-                            <div class="row mb-3">
-                                <div class="col-md-4">
-                                    <div class="alert alert-info mb-0">
-                                        <strong>Total Topics:</strong> ${data.summary.total_topics}
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="alert alert-success mb-0">
-                                        <strong>Complete:</strong> ${data.summary.topics_complete}
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="alert alert-warning mb-0">
-                                        <strong>Need Work:</strong> ${data.summary.topics_with_missing}
-                                    </div>
-                                </div>
-                            </div>
-                `;
-
-                if (data.topics_needing_work.length > 0) {
-                    html += `
-                        <h6 class="mt-3">Topics Needing Work (${data.topics_needing_work.length} topics):</h6>
-                        <div class="table-responsive">
-                            <table class="table table-sm table-striped">
-                                <thead>
-                                    <tr>
-                                        <th>Topic</th>
-                                        <th>Total</th>
-                                        <th>Done</th>
-                                        <th>Missing</th>
-                                        <th>Progress</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                    `;
-
-                    data.topics_needing_work.forEach(topic => {
-                        html += `
-                            <tr>
-                                <td><strong>${topic.name}</strong></td>
-                                <td><span class="badge bg-secondary">${topic.total}</span></td>
-                                <td><span class="badge bg-success">${topic.with_explanations}</span></td>
-                                <td><span class="badge bg-danger">${topic.missing}</span></td>
-                                <td>
-                                    <div class="progress" style="min-width: 100px;">
-                                        <div class="progress-bar ${topic.percentage_complete >= 100 ? 'bg-success' : topic.percentage_complete >= 50 ? 'bg-warning' : 'bg-danger'}"
-                                             role="progressbar"
-                                             style="width: ${topic.percentage_complete}%"
-                                             aria-valuenow="${topic.percentage_complete}"
-                                             aria-valuemin="0"
-                                             aria-valuemax="100">
-                                            ${topic.percentage_complete}%
-                                        </div>
-                                    </div>
-                                </td>
-                            </tr>
-                        `;
-                    });
-
-                    html += `
-                                </tbody>
-                            </table>
-                        </div>
-                    `;
-                }
-
-                if (data.topics_complete.length > 0) {
-                    html += `
-                        <h6 class="mt-4">Topics with All Explanations (${data.topics_complete.length} topics):</h6>
-                        <div class="d-flex flex-wrap gap-2">
-                    `;
-
-                    data.topics_complete.forEach(topic => {
-                        html += `<span class="badge bg-success">${topic.name} (${topic.total})</span>`;
-                    });
-
-                    html += '</div>';
-                }
-
-                html += `
-                        </div>
-                    </div>
-                `;
-
-                resultDiv.innerHTML = html;
-            })
-            .catch(error => {
-                resultDiv.innerHTML = `<div class="alert alert-danger">Network error: ${error.message}</div>`;
             });
         });
 
